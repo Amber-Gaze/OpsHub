@@ -1,0 +1,45 @@
+
+opshub/
+├── cmd/                          # 主程序入口
+│   └── server/                   # 启动服务器
+│       └── main.go               # 程序主入口
+├── internal/                     # 内部业务逻辑
+│   ├── auth/                     # 认证模块
+│   │   ├── jwt.go                # JWT 生成与验证
+│   │   └── middleware.go         # 权限校验中间件
+│   ├── config/                   # 配置管理模块
+│   │   ├── model.go              # 配置项、分组、历史数据结构
+│   │   ├── service.go            # 业务逻辑
+│   │   └── handler.go            # HTTP 接口处理
+│   ├── user/                     # 用户管理模块
+│   │   ├── model.go
+│   │   ├── service.go
+│   │   └── handler.go
+│   ├── service_discovery/        # 服务发现模块（etcd）
+│   │   ├── etcd_client.go        # etcd 客户端封装
+│   │   ├── model.go
+│   │   ├── service.go
+│   │   └── handler.go
+│   ├── audit/                    # 审计日志模块
+│   │   ├── model.go
+│   │   ├── service.go
+│   │   └── handler.go
+│   └── rbac/                     # 权限系统（Casbin）
+│       └── casbin.go             # Casbin 初始化与策略加载
+├── pkg/                          # 工具包
+│   ├── db/                       # 数据库连接池
+│   │   └── postgres.go
+│   ├── cache/                    # Redis 缓存
+│   │   └── redis.go
+│   ├── utils/                    # 工具函数
+│   │   ├── password.go           # 密码加密
+│   │   └── diff.go               # JSON 差异对比
+│   └── logger/                   # 日志记录
+│       └── logger.go
+├── web/                          # 前端静态资源（可选）
+│   ├── dist/                     # 构建后的 Vue 项目
+│   └── index.html                # 入口页面
+├── go.mod                        # 依赖管理
+├── go.sum
+├── README.md
+└── Makefile                      # 构建脚本
