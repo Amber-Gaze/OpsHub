@@ -1,1 +1,11 @@
 /logs
+/output
+/tmp
+*.pid
+*.sock
+*.log
+*.tmp
+*.cache
+*.bak
+*.swp
+cover.out
