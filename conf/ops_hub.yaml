@@ -1,0 +1,26 @@
+main:
+  http_port: 8002
+  grpc_port: 8003
+  monitoring_port: 8004
+
+logger:
+  log_dir: "./logs"
+  log_file_name: "ops_hub.log"
+  max_size: 10
+  max_backups: 5
+  max_age: 7
+  log_level: "info"
+  compress: false
+
+mysql:
+  host: "localhost"
+  port: 3306
+  user: "root"
+  password: "liya1234"
+  database: "opshub_db"
+
+redis:
+  host: "localhost"
+  port: 6379
+  password: "liya1234"
+  db: 0 

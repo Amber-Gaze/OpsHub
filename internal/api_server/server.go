@@ -1,6 +1,6 @@
 package apiserver
 
-import "github.com/LiYaYaoo0/OpsHub/internal/config"
+import "github.com/Amber-Gaze/OpsHub/internal/config"
 
 type apiServer struct {
 }
