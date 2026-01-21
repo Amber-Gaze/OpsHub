@@ -1,4 +1,4 @@
-package apiserver
+package api
 
 import "github.com/Amber-Gaze/OpsHub/internal/config"
 

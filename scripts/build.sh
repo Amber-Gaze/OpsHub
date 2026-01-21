@@ -34,7 +34,7 @@ function build() {
     #-X google.golang.org/protobuf/reflect/protoregistry.conflictPolicy=warn
     go build -trimpath -ldflags "$FLAGS" \
         -o $ROOT/output/bin/$PROGRAM \
-        ./cmd/main.go
+        ./cmd/api/main.go
 
 
     if [ $? -ne 0 ]; then
