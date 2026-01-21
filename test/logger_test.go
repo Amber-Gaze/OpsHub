@@ -5,6 +5,7 @@ import (
 
 	"github.com/Amber-Gaze/OpsHub/internal/config"
 	"github.com/Amber-Gaze/OpsHub/pkg/logger"
+	"go.uber.org/zap"
 )
 
 func TestLogger(t *testing.T) {
@@ -16,4 +17,8 @@ func TestLogger(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		logger.Infof("This is info log number %d", i)
 	}
+
+	log := zap.S().Named("test")
+
+	log.With("biz", "bizName").Infof("add business %s", "biz_business")
 }

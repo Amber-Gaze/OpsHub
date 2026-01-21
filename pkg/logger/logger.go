@@ -66,7 +66,7 @@ func getLogEncoder() zapcore.Encoder {
 		EncodeDuration: zapcore.StringDurationEncoder,
 		EncodeCaller:   customCallerEncoder,
 	}
-	return zapcore.NewConsoleEncoder(encoderConf)
+	return zapcore.NewJSONEncoder(encoderConf)
 }
 
 func getLogWriter(cfg *config.LoggerConf) zapcore.WriteSyncer {

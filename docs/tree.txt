@@ -1,0 +1,101 @@
+.
+├── build
+│   ├── bin
+│   │   ├── monitor.sh
+│   │   ├── start.sh
+│   │   └── stop.sh
+│   └── conf
+│       ├── casbin_model.conf
+│       ├── casbin_policy.csv
+│       ├── ops_hub.toml
+│       └── ops_hub.yaml
+├── CHANGELOG.md
+├── cmd
+│   ├── api
+│   │   └── main.go
+│   └── grpc
+├── docker-compose.yml
+├── docs
+│   └── tree.txt
+├── go.mod
+├── go.sum
+├── internal
+│   ├── app
+│   │   ├── api
+│   │   │   ├── handler
+│   │   │   │   ├── audit.go
+│   │   │   │   ├── config.go
+│   │   │   │   ├── metrics.go
+│   │   │   │   ├── project.go
+│   │   │   │   └── user.go
+│   │   │   ├── middleware
+│   │   │   │   ├── audit.go
+│   │   │   │   ├── auth.go
+│   │   │   │   ├── casbin.go
+│   │   │   │   └── ratelimit.go
+│   │   │   ├── router.go
+│   │   │   └── server.go
+│   │   └── grpc
+│   │       └── server.go
+│   ├── config
+│   │   └── config.go
+│   ├── domain
+│   │   ├── audit.go
+│   │   ├── config.go
+│   │   ├── config_history.go
+│   │   ├── project.go
+│   │   ├── role.go
+│   │   └── user.go
+│   ├── infrastructure
+│   │   ├── casbin.go
+│   │   ├── db.go
+│   │   ├── etcd.go
+│   │   └── redis.go
+│   ├── repository
+│   │   ├── etcd
+│   │   │   ├── config_meta.go
+│   │   │   └── service_registry.go
+│   │   ├── mysql
+│   │   │   ├── project_repo.go
+│   │   │   └── user_repo.go
+│   │   └── redis
+│   │       └── redis.go
+│   └── service
+│       ├── audit_service.go
+│       ├── config_service.go
+│       ├── project_service.go
+│       └── user_service.go
+├── output
+│   ├── bin
+│   │   ├── monitor.sh
+│   │   ├── OpsHub
+│   │   ├── start.sh
+│   │   └── stop.sh
+│   ├── conf
+│   │   ├── casbin_model.conf
+│   │   ├── casbin_policy.csv
+│   │   ├── ops_hub.toml
+│   │   └── ops_hub.yaml
+│   ├── data
+│   ├── logs
+│   └── md5sum.file
+├── pkg
+│   ├── endless
+│   │   └── endless.go
+│   ├── logger
+│   │   └── logger.go
+│   ├── rate
+│   │   └── limiter.go
+│   └── utils
+│       └── out_dir.go
+├── proto
+│   └── service.proto
+├── README.md
+├── scripts
+│   ├── build.sh
+│   └── test.sh
+└── test
+    ├── load_conf_test.go
+    └── logger_test.go
+
+35 directories, 64 files
