@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/Amber-Gaze/OpsHub/internal/config"
+	"github.com/Amber-Gaze/OpsHub/internal/pkg/config"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -23,7 +23,7 @@ func TestLoadConfig(t *testing.T) {
 	}
 
 	is.NotNil(conf.Main)
-	fmt.Printf("%d %d %d\n", conf.Main.GRPCPort, conf.Main.HTTPPort, conf.Main.MonitoringPort)
+	fmt.Printf("%d %d %d\n", conf.Auth.GRPCPort, conf.Auth.HTTPPort, conf.Main.MonitoringPort)
 
 	is.NotNil(conf.Logger)
 	fmt.Printf("%s/%s %s %d %d\n", conf.Logger.LogDir, conf.Logger.LogFileName, conf.Logger.LogLevel, conf.Logger.MaxSize, conf.Logger.MaxBackups)

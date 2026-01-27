@@ -7,15 +7,15 @@ import (
 )
 
 var (
-	limiterMap = make(map[string]*rateLimiter)
+	limiterMap = make(map[string]*RateLimiter)
 	mutex      = &sync.RWMutex{}
 )
 
-type rateLimiter struct {
+type RateLimiter struct {
 	rl ratelimit.Limiter
 }
 
-func GetLimiter(key string, rps int) *rateLimiter {
+func GetLimiter(key string, rps int) *RateLimiter {
 	mutex.RLock()
 	if l, exists := limiterMap[key]; exists {
 		mutex.RUnlock()
@@ -29,7 +29,7 @@ func GetLimiter(key string, rps int) *rateLimiter {
 		return l
 	}
 
-	l := &rateLimiter{
+	l := &RateLimiter{
 		rl: ratelimit.New(rps),
 	}
 	limiterMap[key] = l

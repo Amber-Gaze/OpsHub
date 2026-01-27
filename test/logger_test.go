@@ -3,7 +3,7 @@ package test
 import (
 	"testing"
 
-	"github.com/Amber-Gaze/OpsHub/internal/config"
+	"github.com/Amber-Gaze/OpsHub/internal/pkg/config"
 	"github.com/Amber-Gaze/OpsHub/pkg/logger"
 	"go.uber.org/zap"
 )

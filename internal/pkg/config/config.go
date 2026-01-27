@@ -1,0 +1,81 @@
+package config
+
+import (
+	"github.com/spf13/viper"
+)
+
+type LoggerConf struct {
+	Compress    bool   `mapstructure:"compress"`      // Whether to compress rotated log files
+	MaxSize     int    `mapstructure:"max_size"`      // Maximum size in megabytes of the log file before it gets rotated
+	MaxBackups  int    `mapstructure:"max_backups"`   // Maximum number of old log files to retain
+	MaxAge      int    `mapstructure:"max_age"`       // Maximum number of days to retain old log files
+	LogDir      string `mapstructure:"log_dir"`       // Directory to store log files
+	LogFileName string `mapstructure:"log_file_name"` // Base name of the log file
+	LogLevel    string `mapstructure:"log_level"`     // Minimum log level
+}
+
+type MainConf struct {
+	MonitoringPort int `mapstructure:"monitoring_port"`
+}
+
+type GatewayConf struct {
+	HTTPPort    int    `mapstructure:"http_port"`
+	GRPCPort    int    `mapstructure:"grpc_port"`
+	LogFileName string `mapstructure:"log_file_name"`
+}
+
+type AuthConf struct {
+	HTTPPort    int    `mapstructure:"http_port"`
+	GRPCPort    int    `mapstructure:"grpc_port"`
+	LogFileName string `mapstructure:"log_file_name"`
+}
+
+type ConfigCenterConf struct {
+	HTTPPort    int    `mapstructure:"http_port"`
+	GRPCPort    int    `mapstructure:"grpc_port"`
+	LogFileName string `mapstructure:"log_file_name"`
+}
+
+type MySQLConf struct {
+	Port     int    `mapstructure:"port"`
+	Host     string `mapstructure:"host"`
+	User     string `mapstructure:"user"`
+	Password string `mapstructure:"password"`
+	Database string `mapstructure:"database"`
+}
+
+type RedisConf struct {
+	Port     int    `mapstructure:"port"`
+	DB       int    `mapstructure:"db"`
+	Host     string `mapstructure:"host"`
+	Password string `mapstructure:"password"`
+}
+
+type Config struct {
+	Main         *MainConf         `mapstructure:"main"`
+	Logger       *LoggerConf       `mapstructure:"logger"`
+	MySQL        *MySQLConf        `mapstructure:"mysql"`
+	Redis        *RedisConf        `mapstructure:"redis"`
+	Auth         *AuthConf         `mapstructure:"auth"`
+	ConfigCenter *ConfigCenterConf `mapstructure:"config_center"`
+	Gateway      *GatewayConf      `mapstructure:"gateway"`
+}
+
+// LoadConfig reads the configuration from the specified YAML file and populates the Config struct.
+func LoadConfig(configPath string) (*Config, error) {
+	viper.SetConfigFile(configPath)
+	viper.SetConfigType("yaml")
+
+	// Read the configuration file
+	if err := viper.ReadInConfig(); err != nil {
+		return nil, err
+	}
+
+	// Unmarshal the configuration into the Config struct
+	var cfg Config
+	if err := viper.Unmarshal(&cfg); err != nil {
+		return nil, err
+	}
+
+	return &cfg, nil
+}

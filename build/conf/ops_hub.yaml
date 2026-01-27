@@ -1,7 +1,21 @@
-main:
-  http_port: 8002
-  grpc_port: 8003
+main: 
   monitoring_port: 8004
+
+
+gateway:
+  http_port: 8001
+  grpc_port: 8002
+  log_file_name: "ops_hub_gateway.log"
+
+auth:
+  http_port: 8003
+  grpc_port: 8004
+  log_file_name: "ops_hub_auth.log"
+
+config_center:
+  http_port: 8005
+  grpc_port: 8006
+  log_file_name: "ops_hub_config.log"
 
 logger:
   log_dir: "./logs"

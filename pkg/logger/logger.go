@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/natefinch/lumberjack.v2"
 
-	"github.com/Amber-Gaze/OpsHub/internal/config"
+	"github.com/Amber-Gaze/OpsHub/internal/pkg/config"
 )
 
 var (
