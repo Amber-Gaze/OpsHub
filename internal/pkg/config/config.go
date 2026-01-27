@@ -1,7 +1,15 @@
 package config
 
 import (
+	"sync"
+
 	"github.com/spf13/viper"
+)
+
+var (
+	DefaultConfigPath = "../conf/ops_hub.yaml"
+	defaultConfig     *Config
+	once              sync.Once
 )
 
 type LoggerConf struct {
@@ -19,21 +27,24 @@ type MainConf struct {
 }
 
 type GatewayConf struct {
-	HTTPPort    int    `mapstructure:"http_port"`
-	GRPCPort    int    `mapstructure:"grpc_port"`
-	LogFileName string `mapstructure:"log_file_name"`
+	HTTPPort       int    `mapstructure:"http_port"`
+	GRPCPort       int    `mapstructure:"grpc_port"`
+	MonitoringPort int    `mapstructure:"monitoring_port"`
+	LogFileName    string `mapstructure:"log_file_name"`
 }
 
 type AuthConf struct {
-	HTTPPort    int    `mapstructure:"http_port"`
-	GRPCPort    int    `mapstructure:"grpc_port"`
-	LogFileName string `mapstructure:"log_file_name"`
+	HTTPPort       int    `mapstructure:"http_port"`
+	GRPCPort       int    `mapstructure:"grpc_port"`
+	MonitoringPort int    `mapstructure:"monitoring_port"`
+	LogFileName    string `mapstructure:"log_file_name"`
 }
 
 type ConfigCenterConf struct {
-	HTTPPort    int    `mapstructure:"http_port"`
-	GRPCPort    int    `mapstructure:"grpc_port"`
-	LogFileName string `mapstructure:"log_file_name"`
+	HTTPPort       int    `mapstructure:"http_port"`
+	GRPCPort       int    `mapstructure:"grpc_port"`
+	MonitoringPort int    `mapstructure:"monitoring_port"`
+	LogFileName    string `mapstructure:"log_file_name"`
 }
 
 type MySQLConf struct {
@@ -63,19 +74,29 @@ type Config struct {
 
 // LoadConfig reads the configuration from the specified YAML file and populates the Config struct.
 func LoadConfig(configPath string) (*Config, error) {
-	viper.SetConfigFile(configPath)
-	viper.SetConfigType("yaml")
+	once.Do(func() {
+		if configPath == "" {
+			configPath = DefaultConfigPath
+		}
+		viper.SetConfigFile(configPath)
+		viper.SetConfigType("yaml")
 
-	// Read the configuration file
-	if err := viper.ReadInConfig(); err != nil {
-		return nil, err
+		// Read the configuration file
+		if err := viper.ReadInConfig(); err != nil {
+			return
+		}
+
+		// Unmarshal the configuration into the Config struct
+		var cfg Config
+		if err := viper.Unmarshal(&cfg); err != nil {
+			return
+		}
+
+		defaultConfig = &cfg
+	})
+
+	if defaultConfig == nil {
+		return nil, viper.ConfigFileNotFoundError{}
 	}
-
-	// Unmarshal the configuration into the Config struct
-	var cfg Config
-	if err := viper.Unmarshal(&cfg); err != nil {
-		return nil, err
-	}
-
-	return &cfg, nil
+	return defaultConfig, nil
 }

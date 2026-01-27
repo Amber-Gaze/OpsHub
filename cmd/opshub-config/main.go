@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/config"
+	"github.com/Amber-Gaze/OpsHub/internal/pkg/observability"
 	"github.com/Amber-Gaze/OpsHub/pkg/logger"
 )
 
@@ -20,6 +21,11 @@ var (
 	version     = "0.0.0"
 	showVersion = flag.Bool("v", false, "show version")
 	configFile  = flag.String("c", "../conf/ops_hub.yaml", "default config file")
+)
+
+const (
+	fallbackMonitorBasePort   = 8100
+	configCenterMonitorOffset = 3
 )
 
 func main() {
@@ -37,5 +43,21 @@ func main() {
 	conf.Logger.LogFileName = conf.ConfigCenter.LogFileName
 	logger.InitLogger(conf.Logger)
 
+	monitorBase := fallbackMonitorBasePort
+	if conf.Main != nil && conf.Main.MonitoringPort > 0 {
+		monitorBase = conf.Main.MonitoringPort
+	}
+	startDiagnostics("config-center", monitorBase, configCenterMonitorOffset)
+
 	Exit(0)
+}
+
+func startDiagnostics(service string, basePort, offset int) {
+	port := basePort + offset
+	if port <= 0 {
+		port = fallbackMonitorBasePort + offset
+	}
+	addr := fmt.Sprintf(":%d", port)
+	observability.StartPProf(service, addr)
+	observability.StartGCLogger(service, time.Minute)
 }

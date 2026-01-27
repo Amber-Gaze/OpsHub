@@ -2,45 +2,96 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
+	"time"
 
+	"github.com/Amber-Gaze/OpsHub/internal/pkg/middleware"
 	"github.com/valyala/fasthttp"
 )
 
-type LoginReq struct {
+type Handler struct {
+	svc *Service
+}
+
+func NewHandler(svc *Service) *Handler {
+	return &Handler{svc: svc}
+}
+
+type loginRequest struct {
 	User string `json:"user"`
 }
 
-func Login(ctx *fasthttp.RequestCtx) {
-	var req LoginReq
-	if err := json.Unmarshal(ctx.PostBody(), &req); err != nil {
-		ctx.SetStatusCode(fasthttp.StatusBadRequest)
+type loginResponse struct {
+	Token     string `json:"token"`
+	TokenType string `json:"token_type"`
+	ExpiresAt string `json:"expires_at"`
+}
+
+func (h *Handler) Login(c *middleware.Context) {
+	var req loginRequest
+	if err := json.Unmarshal(c.PostBody(), &req); err != nil {
+		c.Abort(fasthttp.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	resp := map[string]string{
-		"token": "mock-token-" + req.User,
+	result, err := h.svc.Login(req.User)
+	if err != nil {
+		if errors.Is(err, ErrInvalidUser) {
+			c.Abort(fasthttp.StatusBadRequest, err.Error())
+		} else {
+			c.Abort(fasthttp.StatusInternalServerError, err.Error())
+		}
+		return
 	}
 
-	b, _ := json.Marshal(resp)
-	ctx.SetContentType("application/json")
-	ctx.SetBody(b)
+	c.JSON(fasthttp.StatusOK, loginResponse{
+		Token:     result.Token,
+		TokenType: result.TokenType,
+		ExpiresAt: result.ExpiresAt.Format(time.RFC3339),
+	})
 }
 
-type AuthzReq struct {
+type authorizeRequest struct {
 	Token    string `json:"token"`
 	Resource string `json:"resource"`
 	Action   string `json:"action"`
 }
 
-func Authorize(ctx *fasthttp.RequestCtx) {
-	var req AuthzReq
-	_ = json.Unmarshal(ctx.PostBody(), &req)
+type authorizeResponse struct {
+	Allow     bool   `json:"allow"`
+	Subject   string `json:"subject"`
+	Action    string `json:"action"`
+	Resource  string `json:"resource"`
+	Decision  string `json:"decision"`
+	Signature string `json:"signature"`
+}
 
-	allow := req.Token != ""
+func (h *Handler) Authorize(c *middleware.Context) {
+	var req authorizeRequest
+	if err := json.Unmarshal(c.PostBody(), &req); err != nil {
+		c.Abort(fasthttp.StatusBadRequest, "invalid request body")
+		return
+	}
 
-	resp := map[string]bool{"allow": allow}
-	b, _ := json.Marshal(resp)
+	decision, err := h.svc.Authorize(req.Token, req.Resource, req.Action)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrInvalidToken):
+			c.Abort(fasthttp.StatusUnauthorized, err.Error())
+		case errors.Is(err, ErrTokenExpired):
+			c.Abort(fasthttp.StatusUnauthorized, err.Error())
+		default:
+			c.Abort(fasthttp.StatusForbidden, err.Error())
+		}
+		return
+	}
 
-	ctx.SetContentType("application/json")
-	ctx.SetBody(b)
+	c.JSON(fasthttp.StatusOK, authorizeResponse{
+		Allow:     decision.Allow,
+		Subject:   decision.Subject,
+		Action:    decision.Action,
+		Resource:  decision.Resource,
+		Decision:  decision.Decision,
+		Signature: decision.Signature,
+	})
 }

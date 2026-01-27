@@ -13,6 +13,7 @@ type Context struct {
 	Username  string
 	Roles     []string
 	RequestID string
+	Decision  *AuthDecision
 }
 
 func NewContext(ctx *fasthttp.RequestCtx) *Context {
@@ -31,4 +32,21 @@ func (c *Context) JSON(code int, v any) {
 
 func (c *Context) Abort(code int, msg string) {
 	c.JSON(code, map[string]string{"error": msg})
+}
+
+type AuthDecision struct {
+	Allow     bool   `json:"allow"`
+	Subject   string `json:"subject"`
+	Action    string `json:"action"`
+	Resource  string `json:"resource"`
+	Decision  string `json:"decision"`
+	Signature string `json:"signature"`
+}
+
+func (c *Context) SetAuthDecision(d *AuthDecision) {
+	c.Decision = d
+}
+
+func (c *Context) GetAuthDecision() *AuthDecision {
+	return c.Decision
 }
