@@ -42,21 +42,11 @@ func main() {
 	conf.Logger.LogFileName = conf.Gateway.LogFileName
 	logger.InitLogger(conf.Logger)
 
-	monitorBase := fallbackMonitorBasePort
-	if conf.Main != nil && conf.Main.MonitoringPort > 0 {
-		monitorBase = conf.Main.MonitoringPort
+	monitorBase := fallbackMonitorBasePort + gatewayMonitorOffset
+	if config.GetGatewayMonitoringPort() > 0 {
+		monitorBase = config.GetGatewayMonitoringPort()
 	}
-	startDiagnostics("gateway", monitorBase, gatewayMonitorOffset)
+	observability.StartDiagnostics("gateway", monitorBase)
 
 	Exit(0)
-}
-
-func startDiagnostics(service string, basePort, offset int) {
-	port := basePort + offset
-	if port <= 0 {
-		port = fallbackMonitorBasePort + offset
-	}
-	addr := fmt.Sprintf(":%d", port)
-	observability.StartPProf(service, addr)
-	observability.StartGCLogger(service, time.Minute)
 }
