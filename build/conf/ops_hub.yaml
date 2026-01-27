@@ -1,6 +1,5 @@
 main: 
-  monitoring_port: 8004
-
+  monitoring_port: 8010
 
 gateway:
   http_port: 8001
