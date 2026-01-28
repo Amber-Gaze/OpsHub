@@ -2,6 +2,7 @@ package observability
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/pprof"
 	"runtime"
@@ -12,6 +13,12 @@ import (
 )
 
 const defaultGCInterval = time.Minute
+
+func StartDiagnostics(service string, port int) {
+	addr := fmt.Sprintf(":%d", port)
+	StartPProf(service, addr)
+	StartGCLogger(service, time.Minute)
+}
 
 // StartPProf launches a HTTP server exposing pprof endpoints on the given address.
 // The server runs in a separate goroutine so it does not block the caller.

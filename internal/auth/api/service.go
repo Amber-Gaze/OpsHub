@@ -1,15 +1,14 @@
 package api
 
 import (
-	"encoding/base64"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/authutil"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/middleware"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 var (
@@ -19,9 +18,13 @@ var (
 	defaultTokenTTL = time.Hour
 )
 
+const defaultJWTIssuer = "opshub-auth"
+
 type Service struct {
 	decisionSecret []byte
+	jwtSecret      []byte
 	tokenTTL       time.Duration
+	issuer         string
 }
 
 func NewService() *Service {
@@ -37,7 +40,9 @@ func NewServiceWithSecret(secret []byte, ttl time.Duration) *Service {
 	}
 	return &Service{
 		decisionSecret: append([]byte(nil), secret...),
+		jwtSecret:      append([]byte(nil), secret...),
 		tokenTTL:       ttl,
+		issuer:         defaultJWTIssuer,
 	}
 }
 
@@ -53,10 +58,21 @@ func (s *Service) Login(user string) (LoginResult, error) {
 		return LoginResult{}, ErrInvalidUser
 	}
 
-	expiresAt := time.Now().Add(s.tokenTTL).UTC()
-	payload := fmt.Sprintf("%s:%d", subject, expiresAt.Unix())
-	encoded := base64.StdEncoding.EncodeToString([]byte(payload))
-	token := fmt.Sprintf("Bearer %s", encoded)
+	now := time.Now().UTC()
+	expiresAt := now.Add(s.tokenTTL)
+	claims := jwt.RegisteredClaims{
+		Subject:   subject,
+		ExpiresAt: jwt.NewNumericDate(expiresAt),
+		IssuedAt:  jwt.NewNumericDate(now),
+		NotBefore: jwt.NewNumericDate(now),
+		Issuer:    s.issuer,
+	}
+	unsigned := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	signed, err := unsigned.SignedString(s.jwtSecret)
+	if err != nil {
+		return LoginResult{}, fmt.Errorf("sign token: %w", err)
+	}
+	token := fmt.Sprintf("Bearer %s", signed)
 
 	return LoginResult{
 		Token:     token,
@@ -102,19 +118,26 @@ func (s *Service) parseToken(token string) (string, time.Time, error) {
 		return "", time.Time{}, ErrInvalidToken
 	}
 	if strings.HasPrefix(strings.ToLower(trimmed), "bearer ") {
-		trimmed = trimmed[7:]
+		trimmed = strings.TrimSpace(trimmed[7:])
 	}
-	decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(trimmed))
+	claims := &jwt.RegisteredClaims{}
+	parsed, err := jwt.ParseWithClaims(trimmed, claims, func(t *jwt.Token) (interface{}, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, ErrInvalidToken
+		}
+		return s.jwtSecret, nil
+	})
 	if err != nil {
+		if errors.Is(err, jwt.ErrTokenExpired) {
+			return "", time.Time{}, ErrTokenExpired
+		}
 		return "", time.Time{}, ErrInvalidToken
 	}
-	parts := strings.SplitN(string(decoded), ":", 2)
-	if len(parts) != 2 {
+	if parsed == nil || !parsed.Valid {
 		return "", time.Time{}, ErrInvalidToken
 	}
-	unixTs, err := strconv.ParseInt(parts[1], 10, 64)
-	if err != nil {
+	if claims.Subject == "" || claims.ExpiresAt == nil {
 		return "", time.Time{}, ErrInvalidToken
 	}
-	return parts[0], time.Unix(unixTs, 0).UTC(), nil
+	return claims.Subject, claims.ExpiresAt.Time, nil
 }

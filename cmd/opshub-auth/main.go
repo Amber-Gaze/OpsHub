@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/config"
-	"github.com/Amber-Gaze/OpsHub/internal/pkg/observability"
 	"github.com/Amber-Gaze/OpsHub/pkg/logger"
+	"github.com/Amber-Gaze/OpsHub/pkg/observability"
 )
 
 func Exit(code int) {

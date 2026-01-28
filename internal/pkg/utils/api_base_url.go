@@ -6,11 +6,15 @@ import (
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/config"
 )
 
-var APIBaseURL string = "http://127.0.0.1:"
+const (
+	APIBaseURL string = "http://127.0.0.1:"
+	AuthPath   string = "/auth"
+	ConfigPath string = "/configs"
+)
 
 func GetAPIAuthBaseURL() string {
 	var prot int = config.GetAuthHTTPPort()
-	return APIBaseURL + strconv.Itoa(prot)
+	return APIBaseURL + strconv.Itoa(prot) + AuthPath
 }
 
 func GetAPIGatewayBaseURL() string {
@@ -20,5 +24,5 @@ func GetAPIGatewayBaseURL() string {
 
 func GatConfigCenterBaseURL() string {
 	var prot int = config.GetConfigCenterHTTPPort()
-	return APIBaseURL + strconv.Itoa(prot)
+	return APIBaseURL + strconv.Itoa(prot) + ConfigPath
 }

@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/middleware"
+	"github.com/Amber-Gaze/OpsHub/internal/pkg/transport"
 	"github.com/fasthttp/router"
 )
 
@@ -15,28 +16,30 @@ type RoutesConfig struct {
 }
 
 func RegisterRoutes(r *router.Router, svc *Service, cfg RoutesConfig) {
-	authorizeURL := buildAuthorizeURL(cfg.AuthBaseURL, cfg.AuthorizePath)
-	loginPath := normalizePath(cfg.LoginPath, "/login")
+	group := transport.NewRouterGroup(r, "", middleware.Recover())
 
+	loginPath := normalizePath(cfg.LoginPath, "/login")
 	handler := NewHandler(svc, HandlerOptions{AuthLoginPath: loginPath})
 
-	base := []middleware.Middleware{middleware.Recover()}
-	protected := append([]middleware.Middleware{}, base...)
+	group.Use(middleware.RateLimit(cfg.RateLimitRPS))
+	group.Use(middleware.JWTAuthMiddleware())
 
-	if cfg.RateLimitRPS > 0 {
-		protected = append(protected, middleware.RateLimit(cfg.RateLimitRPS))
-	}
-	if authorizeURL != "" {
-		protected = append(protected, middleware.Auth(middleware.AuthConfig{AuthURL: authorizeURL}))
+	group.GET("/healthz", handler.Health)
+
+	auth := group.Group("/auth")
+	{
+		auth.POST("/login", handler.Login)
+		// auth.POST("/authorize", handler.Authorize)
 	}
 
-	r.GET("/healthz", middleware.Chain(handler.Health, base...))
-	r.POST("/auth/login", middleware.Chain(handler.Login, base...))
-	r.GET("/configs", middleware.Chain(handler.ListConfigs, protected...))
-	r.GET("/configs/:key", middleware.Chain(handler.GetConfig, protected...))
-	r.POST("/configs", middleware.Chain(handler.CreateConfig, protected...))
-	r.PUT("/configs/:key", middleware.Chain(handler.UpdateConfig, protected...))
-	r.DELETE("/configs/:key", middleware.Chain(handler.DeleteConfig, protected...))
+	configs := group.Group("/configs")
+	{
+		configs.GET("/", handler.ListConfigs)
+		configs.GET("/:key", handler.GetConfig)
+		configs.POST("/", handler.CreateConfig)
+		configs.PUT("/:key", handler.UpdateConfig)
+		configs.DELETE("/:key", handler.DeleteConfig)
+	}
 }
 
 func buildAuthorizeURL(baseURL, path string) string {
