@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/Amber-Gaze/OpsHub/internal/pkg/config"
+	"github.com/Amber-Gaze/OpsHub/internal/pkg/options"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -16,7 +16,7 @@ func TestLoadConfig(t *testing.T) {
 	is := assert.New(t)
 
 	// This is just a placeholder to illustrate where tests for loading configuration would go.
-	conf, err := config.LoadConfig(configPath)
+	conf, err := options.LoadConfig(configPath)
 	if err != nil {
 		t.Fatal(err)
 		// Handle error

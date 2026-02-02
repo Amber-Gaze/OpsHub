@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/Amber-Gaze/OpsHub/internal/pkg/config"
+	"github.com/Amber-Gaze/OpsHub/internal/pkg/options"
 	"github.com/Amber-Gaze/OpsHub/pkg/logger"
 	"github.com/Amber-Gaze/OpsHub/pkg/observability"
 )
@@ -35,7 +35,7 @@ func main() {
 		return
 	}
 
-	conf, err := config.LoadConfig(*configFile)
+	conf, err := options.LoadConfig(*configFile)
 	if err != nil {
 		panic(err)
 	}
@@ -43,9 +43,9 @@ func main() {
 	logger.InitLogger(conf.Logger)
 
 	monitorBase := fallbackMonitorBasePort + authMonitorOffset
-	if config.GetAuthMonitoringPort() > 0 {
-		monitorBase = config.GetAuthMonitoringPort()
+	if options.GetAuthMonitoringPort() > 0 {
+		monitorBase = options.GetAuthMonitoringPort()
 	}
-	observability.StartDiagnostics("gateway", monitorBase)
+	observability.StartDiagnostics("iam", monitorBase)
 	Exit(0)
 }

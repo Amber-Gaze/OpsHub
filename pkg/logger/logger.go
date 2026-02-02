@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/natefinch/lumberjack.v2"
 
-	"github.com/Amber-Gaze/OpsHub/internal/pkg/config"
+	"github.com/Amber-Gaze/OpsHub/internal/pkg/options"
 )
 
 var (
@@ -18,7 +18,7 @@ var (
 	rotationMutex sync.Mutex
 )
 
-func checkConfigDefaults(cfg *config.LoggerConf) {
+func checkConfigDefaults(cfg *options.LoggerConf) {
 	if cfg.LogDir == "" {
 		cfg.LogDir = "../logs"
 	}
@@ -69,7 +69,7 @@ func getLogEncoder() zapcore.Encoder {
 	return zapcore.NewJSONEncoder(encoderConf)
 }
 
-func getLogWriter(cfg *config.LoggerConf) zapcore.WriteSyncer {
+func getLogWriter(cfg *options.LoggerConf) zapcore.WriteSyncer {
 	logFilePath := filepath.Join(cfg.LogDir, cfg.LogFileName)
 
 	// Initialize lumberjack logger for log rotation
@@ -86,7 +86,7 @@ func getLogWriter(cfg *config.LoggerConf) zapcore.WriteSyncer {
 }
 
 // SetLogLevel sets the minimum log level for the logger and ensures logs are written to the file.
-func getLogLevel(cfg *config.LoggerConf) zapcore.Level {
+func getLogLevel(cfg *options.LoggerConf) zapcore.Level {
 	var zapLevel zapcore.Level
 	switch cfg.LogLevel {
 	case "debug":
@@ -105,7 +105,7 @@ func getLogLevel(cfg *config.LoggerConf) zapcore.Level {
 }
 
 // InitLogger initializes the zap logger with the given configuration.
-func InitLogger(cfg *config.LoggerConf) error {
+func InitLogger(cfg *options.LoggerConf) error {
 	checkConfigDefaults(cfg)
 
 	// Ensure log directory exists

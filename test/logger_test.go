@@ -3,14 +3,14 @@ package test
 import (
 	"testing"
 
-	"github.com/Amber-Gaze/OpsHub/internal/pkg/config"
+	"github.com/Amber-Gaze/OpsHub/internal/pkg/options"
 	"github.com/Amber-Gaze/OpsHub/pkg/logger"
 	"go.uber.org/zap"
 )
 
 func TestLogger(t *testing.T) {
 	// is := assert.New(t)
-	logger.InitLogger(&config.LoggerConf{LogLevel: "info", LogDir: "../logs", LogFileName: "test.log", MaxSize: 100, MaxBackups: 5, MaxAge: 7})
+	logger.InitLogger(&options.LoggerConf{LogLevel: "info", LogDir: "../logs", LogFileName: "test.log", MaxSize: 100, MaxBackups: 5, MaxAge: 7})
 	logger.Infof("%s is ok", "test")
 	logger.Debugf("%s is ok", "debug")
 

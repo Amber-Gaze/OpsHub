@@ -4,17 +4,9 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/golang-jwt/jwt/v5"
+	"github.com/Amber-Gaze/OpsHub/internal/pkg/jwt"
 	"github.com/valyala/fasthttp"
 )
-
-type Claims struct {
-	UserID   int64  `json:"uid"`
-	Username string `json:"username"`
-	jwt.RegisteredClaims
-}
-
-var jwtKey = []byte("secret") // 实际从 config 读
 
 func JWTAuthMiddleware() Middleware {
 	return func(next HandlerFunc) HandlerFunc {
@@ -33,15 +25,8 @@ func JWTAuthMiddleware() Middleware {
 				return
 			}
 
-			claims := &Claims{}
-			token, err := jwt.ParseWithClaims(tokenStr, claims, func(t *jwt.Token) (interface{}, error) {
-				if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-					return nil, errors.New("unexpected signing method")
-				}
-				return jwtKey, nil
-			})
-
-			if err != nil || !token.Valid {
+			claims, err := jwt.ParseToken(tokenStr)
+			if err != nil {
 				c.SetStatusCode(fasthttp.StatusUnauthorized)
 				c.SetBodyString("invalid token")
 				return

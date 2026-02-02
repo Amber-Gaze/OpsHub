@@ -1,4 +1,4 @@
-package config
+package options
 
 var builtinDefaults = &Config{
 	Main: &MainConf{

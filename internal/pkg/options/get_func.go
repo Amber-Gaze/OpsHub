@@ -1,4 +1,4 @@
-package config
+package options
 
 func GetDefaultConfigPath() string {
 	return DefaultConfigPath
