@@ -7,8 +7,9 @@ import (
 	"time"
 
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/authutil"
+	"github.com/Amber-Gaze/OpsHub/internal/pkg/jwt"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/middleware"
-	"github.com/golang-jwt/jwt/v5"
+	"github.com/Amber-Gaze/OpsHub/internal/pkg/store"
 )
 
 var (
@@ -52,32 +53,30 @@ type LoginResult struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
-func (s *Service) Login(user string) (LoginResult, error) {
-	subject := strings.TrimSpace(user)
+func (s *Service) Login(c *middleware.Context, req loginRequest) (LoginResult, error) {
+	subject := strings.TrimSpace(req.User)
 	if subject == "" {
 		return LoginResult{}, ErrInvalidUser
 	}
 
-	now := time.Now().UTC()
-	expiresAt := now.Add(s.tokenTTL)
-	claims := jwt.RegisteredClaims{
-		Subject:   subject,
-		ExpiresAt: jwt.NewNumericDate(expiresAt),
-		IssuedAt:  jwt.NewNumericDate(now),
-		NotBefore: jwt.NewNumericDate(now),
-		Issuer:    s.issuer,
-	}
-	unsigned := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signed, err := unsigned.SignedString(s.jwtSecret)
+	userInfo, err := store.Client().Users().Get(c, subject)
 	if err != nil {
-		return LoginResult{}, fmt.Errorf("sign token: %w", err)
+		return LoginResult{}, ErrInvalidUser
 	}
-	token := fmt.Sprintf("Bearer %s", signed)
+
+	if err := userInfo.ComparePassword(req.Password); err != nil {
+		return LoginResult{}, ErrInvalidUser
+	}
+
+	token, err := jwt.GenToken(userInfo.ID, subject)
+	if err != nil {
+		return LoginResult{}, err
+	}
 
 	return LoginResult{
 		Token:     token,
 		TokenType: "Bearer",
-		ExpiresAt: expiresAt,
+		ExpiresAt: time.Now().Add(jwt.TokenExpireDuration),
 	}, nil
 }
 
@@ -120,20 +119,11 @@ func (s *Service) parseToken(token string) (string, time.Time, error) {
 	if strings.HasPrefix(strings.ToLower(trimmed), "bearer ") {
 		trimmed = strings.TrimSpace(trimmed[7:])
 	}
-	claims := &jwt.RegisteredClaims{}
-	parsed, err := jwt.ParseWithClaims(trimmed, claims, func(t *jwt.Token) (interface{}, error) {
-		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, ErrInvalidToken
-		}
-		return s.jwtSecret, nil
-	})
+	claims, err := jwt.ParseToken(trimmed)
 	if err != nil {
-		if errors.Is(err, jwt.ErrTokenExpired) {
-			return "", time.Time{}, ErrTokenExpired
-		}
 		return "", time.Time{}, ErrInvalidToken
 	}
-	if parsed == nil || !parsed.Valid {
+	if claims == nil {
 		return "", time.Time{}, ErrInvalidToken
 	}
 	if claims.Subject == "" || claims.ExpiresAt == nil {

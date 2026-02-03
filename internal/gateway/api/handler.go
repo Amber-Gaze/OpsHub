@@ -30,7 +30,23 @@ func (h *Handler) Health(c *middleware.Context) {
 }
 
 func (h *Handler) Login(c *middleware.Context) {
-	status, body, contentType, err := h.svc.ForwardAuth(fasthttp.MethodPost, h.authLoginPath, c.PostBody(), h.collectHeaders(c, false))
+	status, body, contentType, err := h.svc.ForwardAuth(fasthttp.MethodPost, "/login", c.PostBody(), h.collectHeaders(c, false))
+	if err != nil {
+		c.Abort(fasthttp.StatusBadGateway, err.Error())
+		return
+	}
+	writeProxyResponse(c, status, contentType, body)
+}
+func (h *Handler) Logout(c *middleware.Context) {
+	status, body, contentType, err := h.svc.ForwardAuth(fasthttp.MethodPost, "/logout", c.PostBody(), h.collectHeaders(c, false))
+	if err != nil {
+		c.Abort(fasthttp.StatusBadGateway, err.Error())
+		return
+	}
+	writeProxyResponse(c, status, contentType, body)
+}
+func (h *Handler) Refresh(c *middleware.Context) {
+	status, body, contentType, err := h.svc.ForwardAuth(fasthttp.MethodPost, "/refresh", c.PostBody(), h.collectHeaders(c, false))
 	if err != nil {
 		c.Abort(fasthttp.StatusBadGateway, err.Error())
 		return

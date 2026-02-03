@@ -7,7 +7,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-const TokenExpireDuration = time.Hour * 24
+const TokenExpireDuration = time.Hour * 1
 
 var CustomSecret = []byte("opshub_secret_key_for_jwt_nsfhqo75qsjd3e4hlslap2s")
 
@@ -29,8 +29,11 @@ func GenToken(UserID int64, username string) (string, error) {
 		UserID,
 		username, // 自定义字段
 		jwt.RegisteredClaims{
+			Subject:   username,
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(TokenExpireDuration)), // 过期时间
-			Issuer:    "opshub",                                                // 签发人 发行人
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			NotBefore: jwt.NewNumericDate(time.Now()),
+			Issuer:    "opshub-iam", // 签发人 发行人
 		},
 	}
 	// 使用指定的签名方法创建签名对象

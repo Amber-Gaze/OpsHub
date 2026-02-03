@@ -1,9 +1,11 @@
 package api
 
 import (
-	"encoding/json"
+	// "encoding/json"
 	"errors"
 	"time"
+
+	json "github.com/json-iterator/go"
 
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/middleware"
 	"github.com/valyala/fasthttp"
@@ -18,7 +20,8 @@ func NewHandler(svc *Service) *Handler {
 }
 
 type loginRequest struct {
-	User string `json:"user"`
+	User     string `json:"user"`
+	Password string `json:"password"`
 }
 
 type loginResponse struct {
@@ -34,7 +37,7 @@ func (h *Handler) Login(c *middleware.Context) {
 		return
 	}
 
-	result, err := h.svc.Login(req.User)
+	result, err := h.svc.Login(c, req)
 	if err != nil {
 		if errors.Is(err, ErrInvalidUser) {
 			c.Abort(fasthttp.StatusBadRequest, err.Error())
@@ -49,6 +52,10 @@ func (h *Handler) Login(c *middleware.Context) {
 		TokenType: result.TokenType,
 		ExpiresAt: result.ExpiresAt.Format(time.RFC3339),
 	})
+}
+
+func (h *Handler) Signup(c *middleware.Context) {
+
 }
 
 type authorizeRequest struct {

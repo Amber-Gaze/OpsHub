@@ -3,7 +3,7 @@ package store
 import "context"
 
 type User struct {
-	ID        string `gorm:"column:id;primaryKey"`
+	ID        int64  `gorm:"column:id;primaryKey"`
 	Username  string `gorm:"column:username;uniqueIndex;not null"`
 	Password  string `gorm:"column:password;not null"`
 	Email     string `gorm:"column:email;not null"`
@@ -15,6 +15,27 @@ type User struct {
 
 func (u *User) TableName() string {
 	return "user"
+}
+
+type StoreError struct {
+	Message string
+}
+
+func (e *StoreError) Error() string {
+	return e.Message
+}
+
+var (
+	ErrInvalidPassword = &StoreError{Message: "invalid password"}
+)
+
+// ComparePassword compares the given password with the user's password.
+
+func (u *User) ComparePassword(password string) error {
+	if u.Password != password {
+		return ErrInvalidPassword
+	}
+	return nil
 }
 
 // UserStore defines the user storage interface.
