@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"errors"
+	"strconv"
 	"strings"
 
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/jwt"
@@ -32,9 +33,14 @@ func JWTAuthMiddleware() Middleware {
 				return
 			}
 
-			// ✔ 身份验证完成，把最小信息放入 ctx
+			// 身份验证完成，把最小信息放入 Context 供下游使用
 			c.SetUserValue("uid", claims.UserID)
 			c.SetUserValue("username", claims.Username)
+			c.UserID = strconv.FormatInt(claims.UserID, 10)
+			c.Username = claims.Username
+			if c.Username == "" {
+				c.Username = claims.Subject
+			}
 
 			next(c)
 		}

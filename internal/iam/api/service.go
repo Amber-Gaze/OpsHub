@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/authutil"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/jwt"
@@ -14,6 +15,7 @@ import (
 
 var (
 	ErrInvalidUser  = errors.New("invalid user")
+	ErrWeakPassword = errors.New("password must be at least 8 characters and include letters, digits, and symbols")
 	ErrInvalidToken = errors.New("invalid token")
 	ErrTokenExpired = errors.New("token expired")
 	defaultTokenTTL = time.Hour
@@ -53,6 +55,69 @@ type LoginResult struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
+type signupRequest struct {
+	User     string `json:"user"`
+	Password string `json:"password"`
+	Email    string `json:"email"`
+	Phone    string `json:"phone"`
+}
+
+func (s *Service) Signup(c *middleware.Context, req signupRequest) error {
+	subject := strings.TrimSpace(req.User)
+	if subject == "" {
+		return ErrInvalidUser
+	}
+	if err := validatePassword(req.Password); err != nil {
+		return err
+	}
+
+	_, err := store.Client().Users().Get(c, subject)
+	if err == nil {
+		return fmt.Errorf("user %s already exists", subject)
+	}
+
+	newUser := &store.User{
+		Username: subject,
+		Password: req.Password,
+		Email:    req.Email,
+		Phone:    req.Phone,
+		IsAdmin:  false,
+		Status:   1,
+	}
+
+	if err := store.Client().Users().Create(c, newUser); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validatePassword enforces basic strength requirements for new accounts.
+func validatePassword(raw string) error {
+	if len(raw) < 8 {
+		return ErrWeakPassword
+	}
+	var hasLetter, hasDigit, hasSymbol bool
+	for _, r := range raw {
+		switch {
+		case unicode.IsLetter(r):
+			hasLetter = true
+		case unicode.IsDigit(r):
+			hasDigit = true
+		case unicode.IsPunct(r) || unicode.IsSymbol(r):
+			hasSymbol = true
+		case unicode.IsSpace(r):
+			// spaces are ignored for symbol requirement
+		default:
+			hasSymbol = true
+		}
+	}
+	if !hasLetter || !hasDigit || !hasSymbol {
+		return ErrWeakPassword
+	}
+	return nil
+}
+
 func (s *Service) Login(c *middleware.Context, req loginRequest) (LoginResult, error) {
 	subject := strings.TrimSpace(req.User)
 	if subject == "" {
@@ -73,8 +138,39 @@ func (s *Service) Login(c *middleware.Context, req loginRequest) (LoginResult, e
 		return LoginResult{}, err
 	}
 
+	userInfo.LoginedAt = time.Now().Unix()
+	if err := store.Client().Users().Update(c, userInfo); err != nil {
+		return LoginResult{}, err
+	}
+
 	return LoginResult{
 		Token:     token,
+		TokenType: "Bearer",
+		ExpiresAt: time.Now().Add(jwt.TokenExpireDuration),
+	}, nil
+}
+
+func (s *Service) Refresh(c *middleware.Context, token string) (LoginResult, error) {
+	subject, expiresAt, err := s.parseToken(token)
+	if err != nil {
+		return LoginResult{}, err
+	}
+	if time.Now().UTC().After(expiresAt) {
+		return LoginResult{}, ErrTokenExpired
+	}
+
+	userInfo, err := store.Client().Users().Get(c, subject)
+	if err != nil {
+		return LoginResult{}, ErrInvalidUser
+	}
+
+	newToken, err := jwt.GenToken(userInfo.ID, subject)
+	if err != nil {
+		return LoginResult{}, err
+	}
+
+	return LoginResult{
+		Token:     newToken,
 		TokenType: "Bearer",
 		ExpiresAt: time.Now().Add(jwt.TokenExpireDuration),
 	}, nil

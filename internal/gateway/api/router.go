@@ -26,15 +26,7 @@ func RegisterRoutes(r *router.Router, svc *Service, cfg RoutesConfig) {
 	group.POST("/refresh", handler.Refresh)
 
 	group.Use(middleware.JWTAuthMiddleware())
-	// users := group.Group(utils.UserPath)
-	// {
-	// users.GET("/", handler.ListUsers)
-	// users.GET("/:name", handler.GetUser)
-	// users.PUT(":name/change-passwd", handler.ChangePassword)
-	// users.PUT("/:name", handler.UpdateUser)
-	// users.DELETE("/:name", handler.DeleteUser)
-	// users.DELETE("/", handler.DeleteUsers)
-	// }
+	group.Use(RequireAuthDecision(svc))
 
 	configs := group.Group(utils.ConfigPath)
 	{

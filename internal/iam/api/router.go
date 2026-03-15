@@ -15,11 +15,13 @@ func RegisterRoutes(r *router.Router, svc *Service) {
 	group.POST("/login", handler.Login)
 	group.POST("/logout", handler.Logout)
 	group.POST("/refresh", handler.Refresh)
+	group.POST("/authorize", handler.Authorize)
+
 	users := group.Group(utils.UserPath)
 	{
 		users.GET("/", handler.ListUsers)
 		users.GET("/:name", handler.GetUser)
-		users.PUT(":name/change-passwd", handler.ChangePassword)
+		users.PUT("/:name/change-passwd", handler.ChangePassword)
 		users.PUT("/:name", handler.UpdateUser)
 		users.DELETE("/:name", handler.DeleteUser)
 		users.DELETE("/", handler.DeleteUsers)

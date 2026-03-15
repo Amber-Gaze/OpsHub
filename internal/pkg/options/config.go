@@ -27,10 +27,12 @@ type MainConf struct {
 }
 
 type GatewayConf struct {
-	HTTPPort       int    `mapstructure:"http_port"`
-	GRPCPort       int    `mapstructure:"grpc_port"`
-	MonitoringPort int    `mapstructure:"monitoring_port"`
-	LogFileName    string `mapstructure:"log_file_name"`
+	HTTPPort             int    `mapstructure:"http_port"`
+	GRPCPort             int    `mapstructure:"grpc_port"`
+	MonitoringPort       int    `mapstructure:"monitoring_port"`
+	LogFileName          string `mapstructure:"log_file_name"`
+	AuthBaseURL          string `mapstructure:"auth_base_url"`           // 可选，不填则用 http://127.0.0.1:{auth.http_port}
+	ConfigCenterBaseURL  string `mapstructure:"config_center_base_url"` // 可选，不填则用 http://127.0.0.1:{config_center.http_port}
 }
 
 type AuthConf struct {
@@ -62,11 +64,18 @@ type RedisConf struct {
 	Password string `mapstructure:"password"`
 }
 
+// EtcdConf 可选，用于配置中心 etcd 存储与发现（后续可接 ConfigMeta / ServiceRegistry）。
+type EtcdConf struct {
+	Endpoints []string `mapstructure:"endpoints"`
+	Prefix    string   `mapstructure:"prefix"` // 配置 key 前缀，如 /opshub/config
+}
+
 type Config struct {
 	Main         *MainConf         `mapstructure:"main"`
 	Logger       *LoggerConf       `mapstructure:"logger"`
 	MySQL        *MySQLConf        `mapstructure:"mysql"`
 	Redis        *RedisConf        `mapstructure:"redis"`
+	Etcd         *EtcdConf         `mapstructure:"etcd"`
 	Auth         *AuthConf         `mapstructure:"auth"`
 	ConfigCenter *ConfigCenterConf `mapstructure:"config_center"`
 	Gateway      *GatewayConf      `mapstructure:"gateway"`

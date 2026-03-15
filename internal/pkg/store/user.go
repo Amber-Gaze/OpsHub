@@ -3,7 +3,7 @@ package store
 import "context"
 
 type User struct {
-	ID        int64  `gorm:"column:id;primaryKey"`
+	ID        int64  `gorm:"column:id;primaryKey;AUTO_INCREMENT"`
 	Username  string `gorm:"column:username;uniqueIndex;not null"`
 	Password  string `gorm:"column:password;not null"`
 	Email     string `gorm:"column:email;not null"`

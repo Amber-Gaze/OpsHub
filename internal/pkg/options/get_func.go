@@ -1,5 +1,7 @@
 package options
 
+import "fmt"
+
 func GetDefaultConfigPath() string {
 	return DefaultConfigPath
 }
@@ -84,6 +86,22 @@ func GetGatewayMonitoringPort() int {
 
 func GetGatewayLogFileName() string {
 	return GetGatewayConf().LogFileName
+}
+
+func GetGatewayAuthBaseURL() string {
+	return GetGatewayConf().AuthBaseURL
+}
+
+func GetGatewayConfigCenterBaseURL() string {
+	return GetGatewayConf().ConfigCenterBaseURL
+}
+
+func GetEtcdConf() *EtcdConf {
+	cfg := getActiveConfig()
+	if cfg != nil && cfg.Etcd != nil {
+		return cfg.Etcd
+	}
+	return nil
 }
 
 func GetAuthConf() *AuthConf {
@@ -188,4 +206,18 @@ func GetRedisPassword() string {
 
 func GetDefaultConfig() *Config {
 	return getActiveConfig()
+}
+
+// GetMySQLOptionsFromConfig 从当前配置构建 MySQLOptions，供 IAM 等模块初始化 store 使用。
+func GetMySQLOptionsFromConfig() *MySQLOptions {
+	return &MySQLOptions{
+		Host:                  fmt.Sprintf("%s:%d", GetMySQLHost(), GetMySQLPort()),
+		Username:              GetMySQLUser(),
+		Password:              GetMySQLPassword(),
+		Database:              GetMySQLDatabase(),
+		MaxIdleConnections:    100,
+		MaxOpenConnections:    100,
+		MaxConnectionLifeTime: NewMySQLOptions().MaxConnectionLifeTime,
+		LogLevel:              NewMySQLOptions().LogLevel,
+	}
 }

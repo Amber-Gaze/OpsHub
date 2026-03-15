@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"encoding/json"
+	"net"
 
 	"github.com/valyala/fasthttp"
 )
@@ -49,4 +50,9 @@ func (c *Context) SetAuthDecision(d *AuthDecision) {
 
 func (c *Context) GetAuthDecision() *AuthDecision {
 	return c.Decision
+}
+
+// RemoteIP returns the client address for logging/forwarding (e.g. X-Forwarded-For).
+func (c *Context) RemoteIP() net.Addr {
+	return c.RemoteAddr()
 }

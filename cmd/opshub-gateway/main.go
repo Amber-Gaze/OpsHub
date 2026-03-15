@@ -3,12 +3,17 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"time"
 
+	"github.com/Amber-Gaze/OpsHub/internal/gateway/api"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/options"
+	"github.com/Amber-Gaze/OpsHub/internal/pkg/utils"
 	"github.com/Amber-Gaze/OpsHub/pkg/logger"
 	"github.com/Amber-Gaze/OpsHub/pkg/observability"
+	"github.com/fasthttp/router"
+	"github.com/valyala/fasthttp"
 )
 
 func Exit(code int) {
@@ -26,6 +31,7 @@ var (
 const (
 	fallbackMonitorBasePort = 8100
 	gatewayMonitorOffset    = 2
+	defaultRateLimitRPS     = 100
 )
 
 func main() {
@@ -48,5 +54,27 @@ func main() {
 	}
 	observability.StartDiagnostics("gateway", monitorBase)
 
+	authBaseURL := utils.GetGatewayAuthBaseURL()
+	configCenterBaseURL := utils.GetGatewayConfigCenterBaseURL()
+	svc := api.NewService(authBaseURL, configCenterBaseURL)
+
+	r := router.New()
+	api.RegisterRoutes(r, svc, api.RoutesConfig{
+		AuthBaseURL:   authBaseURL,
+		LoginPath:     "/login",
+		RateLimitRPS:  defaultRateLimitRPS,
+	})
+
+	addr := fmt.Sprintf(":%d", options.GetGatewayHTTPPort())
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		logger.Errorf("gateway: listen %s: %v", addr, err)
+		Exit(1)
+	}
+	logger.Infof("gateway: fasthttp listening on %s (auth=%s config=%s)", addr, authBaseURL, configCenterBaseURL)
+	if err := fasthttp.Serve(ln, r.Handler); err != nil {
+		logger.Errorf("gateway: serve: %v", err)
+		Exit(1)
+	}
 	Exit(0)
 }
