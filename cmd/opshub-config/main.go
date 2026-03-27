@@ -9,6 +9,7 @@ import (
 
 	"github.com/Amber-Gaze/OpsHub/internal/config_center/api"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/options"
+	"github.com/Amber-Gaze/OpsHub/internal/pkg/repository/etcd"
 	"github.com/Amber-Gaze/OpsHub/pkg/logger"
 	"github.com/Amber-Gaze/OpsHub/pkg/observability"
 	"github.com/fasthttp/router"
@@ -53,7 +54,21 @@ func main() {
 	}
 	observability.StartDiagnostics("config-center", monitorBase)
 
-	svc := api.NewService()
+	var svc *api.Service
+	if ec := options.GetEtcdConf(); ec != nil && len(ec.Endpoints) > 0 {
+		kv, err := etcd.NewConfigKV(ec.Endpoints, ec.Prefix)
+		if err != nil {
+			logger.Errorf("config-center: etcd connect: %v", err)
+			Exit(1)
+		}
+		defer kv.Close()
+		svc = api.NewServiceWithEtcd(kv)
+		logger.Infof("config-center: etcd backend endpoints=%v prefix=%q", ec.Endpoints, ec.Prefix)
+	} else {
+		svc = api.NewService()
+		logger.Infof("config-center: in-memory store (set etcd.endpoints to enable persistence)")
+	}
+
 	r := router.New()
 	api.RegisterRoutes(r, svc)
 

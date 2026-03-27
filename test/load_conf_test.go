@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	configPath string = "../conf/ops_hub.yaml"
+	configPath = "../build/conf/ops_hub.yaml"
 )
 
 func TestLoadConfig(t *testing.T) {

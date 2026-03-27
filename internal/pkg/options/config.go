@@ -64,7 +64,7 @@ type RedisConf struct {
 	Password string `mapstructure:"password"`
 }
 
-// EtcdConf 可选，用于配置中心 etcd 存储与发现（后续可接 ConfigMeta / ServiceRegistry）。
+// EtcdConf 可选；填写 endpoints 后配置中心使用 etcd 持久化（见 repository/etcd.ConfigKV）。
 type EtcdConf struct {
 	Endpoints []string `mapstructure:"endpoints"`
 	Prefix    string   `mapstructure:"prefix"` // 配置 key 前缀，如 /opshub/config

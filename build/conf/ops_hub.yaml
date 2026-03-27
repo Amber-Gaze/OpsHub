@@ -6,6 +6,9 @@ gateway:
   grpc_port: 8002
   monitoring_port: 8003
   log_file_name: "ops_hub_gateway.log"
+  # 可选：不填则按 auth / config_center 的 http_port 自动拼 127.0.0.1
+  # auth_base_url: "http://127.0.0.1:8004"
+  # config_center_base_url: "http://127.0.0.1:8007"
 
 auth:
   http_port: 8004
@@ -39,4 +42,10 @@ redis:
   host: "localhost"
   port: 6379
   password: "liya1234"
-  db: 0 
+  db: 0
+
+# 可选：填写 endpoints 后配置中心将使用 etcd 持久化（需本地或集群 etcd 可达）
+# etcd:
+#   endpoints:
+#     - "127.0.0.1:2379"
+#   prefix: "/opshub/config"
