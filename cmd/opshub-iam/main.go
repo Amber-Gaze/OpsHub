@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"net"
 	"os"
 	"time"
 
@@ -11,10 +10,10 @@ import (
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/options"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/store"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/store/mysql"
+	"github.com/Amber-Gaze/OpsHub/pkg/graceful"
 	"github.com/Amber-Gaze/OpsHub/pkg/logger"
 	"github.com/Amber-Gaze/OpsHub/pkg/observability"
 	"github.com/fasthttp/router"
-	"github.com/valyala/fasthttp"
 )
 
 func Exit(code int) {
@@ -66,15 +65,17 @@ func main() {
 	api.RegisterRoutes(r, svc)
 
 	addr := fmt.Sprintf(":%d", options.GetAuthHTTPPort())
-	ln, err := net.Listen("tcp", addr)
-	if err != nil {
-		logger.Errorf("iam: listen %s: %v", addr, err)
-		Exit(1)
-	}
 	logger.Infof("iam: fasthttp listening on %s", addr)
-	if err := fasthttp.Serve(ln, r.Handler); err != nil {
+	err = graceful.RunServer(addr, r.Handler, graceful.DefaultShutdownTimeout, func() error {
+		if closer, ok := factory.(interface{ Close() error }); ok {
+			return closer.Close()
+		}
+		return nil
+	})
+	if err != nil {
 		logger.Errorf("iam: serve: %v", err)
 		Exit(1)
 	}
+	logger.Infof("iam: graceful shutdown done")
 	Exit(0)
 }

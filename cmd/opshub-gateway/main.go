@@ -3,17 +3,16 @@ package main
 import (
 	"flag"
 	"fmt"
-	"net"
 	"os"
 	"time"
 
 	"github.com/Amber-Gaze/OpsHub/internal/gateway/api"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/options"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/utils"
+	"github.com/Amber-Gaze/OpsHub/pkg/graceful"
 	"github.com/Amber-Gaze/OpsHub/pkg/logger"
 	"github.com/Amber-Gaze/OpsHub/pkg/observability"
 	"github.com/fasthttp/router"
-	"github.com/valyala/fasthttp"
 )
 
 func Exit(code int) {
@@ -60,21 +59,18 @@ func main() {
 
 	r := router.New()
 	api.RegisterRoutes(r, svc, api.RoutesConfig{
-		AuthBaseURL:   authBaseURL,
-		LoginPath:     "/login",
-		RateLimitRPS:  defaultRateLimitRPS,
+		AuthBaseURL:  authBaseURL,
+		LoginPath:    "/login",
+		RateLimitRPS: defaultRateLimitRPS,
 	})
 
 	addr := fmt.Sprintf(":%d", options.GetGatewayHTTPPort())
-	ln, err := net.Listen("tcp", addr)
-	if err != nil {
-		logger.Errorf("gateway: listen %s: %v", addr, err)
-		Exit(1)
-	}
 	logger.Infof("gateway: fasthttp listening on %s (auth=%s config=%s)", addr, authBaseURL, configCenterBaseURL)
-	if err := fasthttp.Serve(ln, r.Handler); err != nil {
+	err = graceful.RunServer(addr, r.Handler, graceful.DefaultShutdownTimeout, nil)
+	if err != nil {
 		logger.Errorf("gateway: serve: %v", err)
 		Exit(1)
 	}
+	logger.Infof("gateway: graceful shutdown done")
 	Exit(0)
 }
