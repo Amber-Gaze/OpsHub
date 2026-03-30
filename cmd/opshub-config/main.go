@@ -76,7 +76,7 @@ func main() {
 
 	addr := fmt.Sprintf(":%d", options.GetConfigCenterHTTPPort())
 	logger.Infof("config-center: fasthttp listening on %s (routes: /configs, /internal/configs)", addr)
-	err = graceful.RunServer(addr, r.Handler, graceful.DefaultShutdownTimeout, closeEtcd)
+	err = graceful.RunServer(addr, r.Handler, options.GetShutdownTimeout(), closeEtcd)
 	if err != nil {
 		logger.Errorf("config-center: serve: %v", err)
 		Exit(1)

@@ -1,9 +1,12 @@
 package store
 
+import "context"
+
 var client Factory
 
 type Factory interface {
 	Users() UserStore
+	Ping(ctx context.Context) error
 }
 
 // Client return the store client instance.

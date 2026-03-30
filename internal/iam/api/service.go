@@ -10,6 +10,7 @@ import (
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/authutil"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/jwt"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/middleware"
+	"github.com/Amber-Gaze/OpsHub/internal/pkg/passhash"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/store"
 )
 
@@ -76,9 +77,14 @@ func (s *Service) Signup(c *middleware.Context, req signupRequest) error {
 		return fmt.Errorf("user %s already exists", subject)
 	}
 
+	hashed, err := passhash.Hash(req.Password)
+	if err != nil {
+		return err
+	}
+
 	newUser := &store.User{
 		Username: subject,
-		Password: req.Password,
+		Password: hashed,
 		Email:    req.Email,
 		Phone:    req.Phone,
 		IsAdmin:  false,
@@ -133,7 +139,14 @@ func (s *Service) Login(c *middleware.Context, req loginRequest) (LoginResult, e
 		return LoginResult{}, ErrInvalidUser
 	}
 
-	token, err := jwt.GenToken(userInfo.ID, subject)
+	if !passhash.LooksBcrypt(userInfo.Password) {
+		h, err := passhash.Hash(req.Password)
+		if err == nil {
+			userInfo.Password = h
+		}
+	}
+
+	token, err := jwt.GenToken(userInfo.ID, subject, userInfo.IsAdmin)
 	if err != nil {
 		return LoginResult{}, err
 	}
@@ -164,7 +177,7 @@ func (s *Service) Refresh(c *middleware.Context, token string) (LoginResult, err
 		return LoginResult{}, ErrInvalidUser
 	}
 
-	newToken, err := jwt.GenToken(userInfo.ID, subject)
+	newToken, err := jwt.GenToken(userInfo.ID, subject, userInfo.IsAdmin)
 	if err != nil {
 		return LoginResult{}, err
 	}

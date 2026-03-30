@@ -8,8 +8,11 @@ import (
 
 // RegisterRoutes 注册配置中心路由，包含 /configs 与 /internal/configs（供 Gateway 转发）。
 func RegisterRoutes(r *router.Router, svc *Service, middlewares ...middleware.Middleware) {
-	group := transport.NewRouterGroup(r, "", middleware.Recover())
+	group := transport.NewRouterGroup(r, "", middleware.RequestID(), middleware.Recover())
 	handler := NewHandler(svc)
+
+	group.GET("/healthz", handler.Healthz)
+	group.GET("/readyz", handler.Readyz)
 
 	registerConfigGroup := func(prefix string) {
 		config := group.Group(prefix)
@@ -22,4 +25,5 @@ func RegisterRoutes(r *router.Router, svc *Service, middlewares ...middleware.Mi
 
 	registerConfigGroup("/configs")
 	registerConfigGroup("/internal/configs")
+	middleware.AttachRouterErrors(r)
 }

@@ -12,6 +12,7 @@ type Context struct {
 
 	UserID    string
 	Username  string
+	IsAdmin   bool
 	Roles     []string
 	RequestID string
 	Decision  *AuthDecision

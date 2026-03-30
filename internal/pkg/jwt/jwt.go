@@ -19,15 +19,17 @@ type CustomClaims struct {
 	// 可根据需要自行添加字段
 	UserID               int64  `json:"user_id"`
 	Username             string `json:"username"`
+	IsAdmin              bool   `json:"is_admin"`
 	jwt.RegisteredClaims        // 内嵌标准的声明
 }
 
-// GenToken 生成JWT
-func GenToken(UserID int64, username string) (string, error) {
+// GenToken 生成 JWT（携带管理员标记，供权限校验）。
+func GenToken(UserID int64, username string, isAdmin bool) (string, error) {
 	// 创建一个我们自己的声明的数据
 	claims := CustomClaims{
 		UserID,
 		username, // 自定义字段
+		isAdmin,
 		jwt.RegisteredClaims{
 			Subject:   username,
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(TokenExpireDuration)), // 过期时间

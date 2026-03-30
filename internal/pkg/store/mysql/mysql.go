@@ -1,6 +1,7 @@
 package mysql
 
 import (
+	"context"
 	"fmt"
 	"sync"
 
@@ -26,6 +27,14 @@ func (ds *datastore) Close() error {
 	}
 
 	return db.Close()
+}
+
+func (ds *datastore) Ping(ctx context.Context) error {
+	sqlDB, err := ds.db.DB()
+	if err != nil {
+		return err
+	}
+	return sqlDB.PingContext(ctx)
 }
 
 var (

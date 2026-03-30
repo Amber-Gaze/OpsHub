@@ -1,6 +1,10 @@
 package store
 
-import "context"
+import (
+	"context"
+
+	"github.com/Amber-Gaze/OpsHub/internal/pkg/passhash"
+)
 
 type User struct {
 	ID        int64  `gorm:"column:id;primaryKey;AUTO_INCREMENT"`
@@ -29,10 +33,9 @@ var (
 	ErrInvalidPassword = &StoreError{Message: "invalid password"}
 )
 
-// ComparePassword compares the given password with the user's password.
-
+// ComparePassword 校验密码：支持 bcrypt 与历史明文（登录后会自动升级为 bcrypt）。
 func (u *User) ComparePassword(password string) error {
-	if u.Password != password {
+	if err := passhash.Compare(u.Password, password); err != nil {
 		return ErrInvalidPassword
 	}
 	return nil

@@ -1,6 +1,10 @@
 package options
 
-import "fmt"
+import (
+	"fmt"
+	"os"
+	"time"
+)
 
 func GetDefaultConfigPath() string {
 	return DefaultConfigPath
@@ -26,6 +30,21 @@ func GetMainMonitoringPort() int {
 		return cfg.MonitoringPort
 	}
 	return builtinDefaults.Main.MonitoringPort
+}
+
+// GetShutdownTimeout 返回 HTTP 服务优雅退出超时（用于 pkg/graceful）。
+func GetShutdownTimeout() time.Duration {
+	sec := 0
+	if cfg := GetMainConf(); cfg != nil {
+		sec = cfg.ShutdownTimeoutSeconds
+	}
+	if sec <= 0 {
+		sec = builtinDefaults.Main.ShutdownTimeoutSeconds
+	}
+	if sec <= 0 {
+		sec = 20
+	}
+	return time.Duration(sec) * time.Second
 }
 
 func GetLoggerConf() *LoggerConf {
@@ -126,6 +145,17 @@ func GetAuthMonitoringPort() int {
 
 func GetAuthLogFileName() string {
 	return GetAuthConf().LogFileName
+}
+
+// GetBootstrapCipherKey 解密 bootstrap 管理员密文的主密钥：优先环境变量。
+func GetBootstrapCipherKey() string {
+	if k := os.Getenv("OPSHUB_BOOTSTRAP_CIPHER_KEY"); k != "" {
+		return k
+	}
+	if c := GetAuthConf(); c != nil {
+		return c.BootstrapCipherKey
+	}
+	return ""
 }
 
 func GetConfigCenterConf() *ConfigCenterConf {

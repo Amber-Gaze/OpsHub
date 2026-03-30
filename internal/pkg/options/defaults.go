@@ -2,7 +2,8 @@ package options
 
 var builtinDefaults = &Config{
 	Main: &MainConf{
-		MonitoringPort: 8100,
+		MonitoringPort:         8100,
+		ShutdownTimeoutSeconds: 20,
 	},
 	Logger: &LoggerConf{
 		Compress:    false,

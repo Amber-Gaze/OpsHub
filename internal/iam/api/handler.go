@@ -9,6 +9,7 @@ import (
 	json "github.com/json-iterator/go"
 
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/middleware"
+	"github.com/Amber-Gaze/OpsHub/internal/pkg/passhash"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/store"
 	"github.com/valyala/fasthttp"
 )
@@ -19,6 +20,20 @@ type Handler struct {
 
 func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
+}
+
+func (h *Handler) Healthz(c *middleware.Context) {
+	c.JSON(fasthttp.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *Handler) Readyz(c *middleware.Context) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := store.Client().Ping(ctx); err != nil {
+		c.Abort(fasthttp.StatusServiceUnavailable, err.Error())
+		return
+	}
+	c.JSON(fasthttp.StatusOK, map[string]string{"status": "ready"})
 }
 
 type loginRequest struct {
@@ -229,11 +244,22 @@ func (h *Handler) ChangePassword(c *middleware.Context) {
 		c.Abort(fasthttp.StatusNotFound, "user not found")
 		return
 	}
-	if u.ComparePassword(req.OldPassword) != nil {
-		c.Abort(fasthttp.StatusBadRequest, "invalid old password")
+	isSelf := strings.EqualFold(name, c.Username)
+	if isSelf {
+		if u.ComparePassword(req.OldPassword) != nil {
+			c.Abort(fasthttp.StatusBadRequest, "invalid old password")
+			return
+		}
+	} else if !c.IsAdmin {
+		c.Abort(fasthttp.StatusForbidden, "forbidden")
 		return
 	}
-	u.Password = req.NewPassword
+	hashed, err := passhash.Hash(req.NewPassword)
+	if err != nil {
+		c.Abort(fasthttp.StatusInternalServerError, err.Error())
+		return
+	}
+	u.Password = hashed
 	if err := store.Client().Users().Update(ctx, u); err != nil {
 		c.Abort(fasthttp.StatusInternalServerError, err.Error())
 		return
@@ -242,8 +268,10 @@ func (h *Handler) ChangePassword(c *middleware.Context) {
 }
 
 type updateUserRequest struct {
-	Email string `json:"email"`
-	Phone string `json:"phone"`
+	Email   string `json:"email"`
+	Phone   string `json:"phone"`
+	IsAdmin *bool  `json:"is_admin,omitempty"`
+	Status  *int   `json:"status,omitempty"`
 }
 
 func (h *Handler) UpdateUser(c *middleware.Context) {
@@ -258,6 +286,12 @@ func (h *Handler) UpdateUser(c *middleware.Context) {
 		c.Abort(fasthttp.StatusBadRequest, "invalid request body")
 		return
 	}
+	if req.IsAdmin != nil || req.Status != nil {
+		if !c.IsAdmin {
+			c.Abort(fasthttp.StatusForbidden, "admin required")
+			return
+		}
+	}
 	ctx := context.Background()
 	u, err := store.Client().Users().Get(ctx, name)
 	if err != nil {
@@ -269,6 +303,12 @@ func (h *Handler) UpdateUser(c *middleware.Context) {
 	}
 	if req.Phone != "" {
 		u.Phone = req.Phone
+	}
+	if req.IsAdmin != nil {
+		u.IsAdmin = *req.IsAdmin
+	}
+	if req.Status != nil {
+		u.Status = *req.Status
 	}
 	if err := store.Client().Users().Update(ctx, u); err != nil {
 		c.Abort(fasthttp.StatusInternalServerError, err.Error())
@@ -282,6 +322,10 @@ func (h *Handler) DeleteUser(c *middleware.Context) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		c.Abort(fasthttp.StatusBadRequest, "invalid name")
+		return
+	}
+	if !c.IsAdmin && !strings.EqualFold(name, c.Username) {
+		c.Abort(fasthttp.StatusForbidden, "forbidden")
 		return
 	}
 	ctx := context.Background()

@@ -66,7 +66,7 @@ func main() {
 
 	addr := fmt.Sprintf(":%d", options.GetGatewayHTTPPort())
 	logger.Infof("gateway: fasthttp listening on %s (auth=%s config=%s)", addr, authBaseURL, configCenterBaseURL)
-	err = graceful.RunServer(addr, r.Handler, graceful.DefaultShutdownTimeout, nil)
+	err = graceful.RunServer(addr, r.Handler, options.GetShutdownTimeout(), nil)
 	if err != nil {
 		logger.Errorf("gateway: serve: %v", err)
 		Exit(1)

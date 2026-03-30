@@ -15,12 +15,13 @@ type RoutesConfig struct {
 }
 
 func RegisterRoutes(r *router.Router, svc *Service, cfg RoutesConfig) {
-	group := transport.NewRouterGroup(r, "", middleware.Recover())
+	group := transport.NewRouterGroup(r, "", middleware.RequestID(), middleware.Recover())
 
 	handler := NewHandler(svc, HandlerOptions{AuthLoginPath: "/login"})
 
 	group.Use(middleware.RateLimit(cfg.RateLimitRPS))
 	group.GET("/healthz", handler.Health)
+	group.GET("/readyz", handler.Ready)
 	group.POST("/login", handler.Login)
 	group.POST("/logout", handler.Logout)
 	group.POST("/refresh", handler.Refresh)
@@ -36,4 +37,5 @@ func RegisterRoutes(r *router.Router, svc *Service, cfg RoutesConfig) {
 		configs.PUT("/:key", handler.UpdateConfig)
 		configs.DELETE("/:key", handler.DeleteConfig)
 	}
+	middleware.AttachRouterErrors(r)
 }

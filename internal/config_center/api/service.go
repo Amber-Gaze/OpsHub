@@ -48,6 +48,16 @@ func (s *Service) etcdCtx() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), 5*time.Second)
 }
 
+// Ready 用于 readiness：启用 etcd 时必须能连上集群；纯内存模式始终就绪。
+func (s *Service) Ready() error {
+	if s.etcdKV == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	return s.etcdKV.Ping(ctx)
+}
+
 func (s *Service) List() []ConfigItem {
 	if s.etcdKV != nil {
 		ctx, cancel := s.etcdCtx()

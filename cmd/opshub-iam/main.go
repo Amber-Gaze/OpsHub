@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
 	"time"
 
 	"github.com/Amber-Gaze/OpsHub/internal/iam/api"
+	"github.com/Amber-Gaze/OpsHub/internal/iam/bootstrap"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/options"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/store"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/store/mysql"
@@ -53,6 +55,7 @@ func main() {
 		Exit(1)
 	}
 	store.SetClient(factory)
+	bootstrap.EnsureAdminFromConfig(context.Background())
 
 	monitorBase := fallbackMonitorBasePort + authMonitorOffset
 	if options.GetAuthMonitoringPort() > 0 {
@@ -66,7 +69,7 @@ func main() {
 
 	addr := fmt.Sprintf(":%d", options.GetAuthHTTPPort())
 	logger.Infof("iam: fasthttp listening on %s", addr)
-	err = graceful.RunServer(addr, r.Handler, graceful.DefaultShutdownTimeout, func() error {
+	err = graceful.RunServer(addr, r.Handler, options.GetShutdownTimeout(), func() error {
 		if closer, ok := factory.(interface{ Close() error }); ok {
 			return closer.Close()
 		}

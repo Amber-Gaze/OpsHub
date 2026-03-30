@@ -8,8 +8,11 @@ import (
 )
 
 func RegisterRoutes(r *router.Router, svc *Service) {
-	group := transport.NewRouterGroup(r, "", middleware.Recover())
+	group := transport.NewRouterGroup(r, "", middleware.RequestID(), middleware.Recover())
 	handler := NewHandler(svc)
+
+	group.GET("/healthz", handler.Healthz)
+	group.GET("/readyz", handler.Readyz)
 
 	group.POST("/signup", handler.Signup)
 	group.POST("/login", handler.Login)
@@ -17,13 +20,14 @@ func RegisterRoutes(r *router.Router, svc *Service) {
 	group.POST("/refresh", handler.Refresh)
 	group.POST("/authorize", handler.Authorize)
 
-	users := group.Group(utils.UserPath)
+	users := group.Group(utils.UserPath, middleware.JWTAuthMiddleware())
 	{
-		users.GET("/", handler.ListUsers)
-		users.GET("/:name", handler.GetUser)
-		users.PUT("/:name/change-passwd", handler.ChangePassword)
-		users.PUT("/:name", handler.UpdateUser)
+		users.GET("/", handler.ListUsers, middleware.RequireAdmin())
+		users.DELETE("/", handler.DeleteUsers, middleware.RequireAdmin())
 		users.DELETE("/:name", handler.DeleteUser)
-		users.DELETE("/", handler.DeleteUsers)
+		users.GET("/:name", handler.GetUser, middleware.RequireSelfOrAdmin())
+		users.PUT("/:name/change-passwd", handler.ChangePassword, middleware.RequireSelfOrAdmin())
+		users.PUT("/:name", handler.UpdateUser, middleware.RequireSelfOrAdmin())
 	}
+	middleware.AttachRouterErrors(r)
 }

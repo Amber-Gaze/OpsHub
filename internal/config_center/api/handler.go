@@ -18,6 +18,18 @@ func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc, decisionSecret: authutil.DefaultDecisionSecret}
 }
 
+func (h *Handler) Healthz(c *middleware.Context) {
+	c.JSON(fasthttp.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *Handler) Readyz(c *middleware.Context) {
+	if err := h.svc.Ready(); err != nil {
+		c.Abort(fasthttp.StatusServiceUnavailable, err.Error())
+		return
+	}
+	c.JSON(fasthttp.StatusOK, map[string]string{"status": "ready"})
+}
+
 type createConfigRequest struct {
 	Key      string `json:"key"`
 	Value    string `json:"value"`

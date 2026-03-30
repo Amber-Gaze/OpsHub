@@ -23,16 +23,17 @@ type LoggerConf struct {
 }
 
 type MainConf struct {
-	MonitoringPort int `mapstructure:"monitoring_port"`
+	MonitoringPort         int `mapstructure:"monitoring_port"`
+	ShutdownTimeoutSeconds int `mapstructure:"shutdown_timeout_seconds"` // 优雅退出等待在途请求的最长时间（秒），0 表示用默认 20
 }
 
 type GatewayConf struct {
-	HTTPPort             int    `mapstructure:"http_port"`
-	GRPCPort             int    `mapstructure:"grpc_port"`
-	MonitoringPort       int    `mapstructure:"monitoring_port"`
-	LogFileName          string `mapstructure:"log_file_name"`
-	AuthBaseURL          string `mapstructure:"auth_base_url"`           // 可选，不填则用 http://127.0.0.1:{auth.http_port}
-	ConfigCenterBaseURL  string `mapstructure:"config_center_base_url"` // 可选，不填则用 http://127.0.0.1:{config_center.http_port}
+	HTTPPort            int    `mapstructure:"http_port"`
+	GRPCPort            int    `mapstructure:"grpc_port"`
+	MonitoringPort      int    `mapstructure:"monitoring_port"`
+	LogFileName         string `mapstructure:"log_file_name"`
+	AuthBaseURL         string `mapstructure:"auth_base_url"`          // 可选，不填则用 http://127.0.0.1:{auth.http_port}
+	ConfigCenterBaseURL string `mapstructure:"config_center_base_url"` // 可选，不填则用 http://127.0.0.1:{config_center.http_port}
 }
 
 type AuthConf struct {
@@ -40,6 +41,11 @@ type AuthConf struct {
 	GRPCPort       int    `mapstructure:"grpc_port"`
 	MonitoringPort int    `mapstructure:"monitoring_port"`
 	LogFileName    string `mapstructure:"log_file_name"`
+	// 引导管理员（可选）：用户名 + 密文密码；密钥用 OPSHUB_BOOTSTRAP_CIPHER_KEY 或 bootstrap_cipher_key
+	BootstrapAdminUsername       string `mapstructure:"bootstrap_admin_username"`
+	BootstrapAdminPasswordCipher string `mapstructure:"bootstrap_admin_password_cipher"` // base64，由 opshub-bootstrap-encrypt 生成
+	BootstrapCipherKey           string `mapstructure:"bootstrap_cipher_key"`            // 建议仅本机/密钥管理，生产优先环境变量
+	BootstrapAdminEmail          string `mapstructure:"bootstrap_admin_email"`           // 可选，默认 {username}@bootstrap.opshub.local
 }
 
 type ConfigCenterConf struct {

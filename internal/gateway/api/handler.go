@@ -29,6 +29,10 @@ func (h *Handler) Health(c *middleware.Context) {
 	c.JSON(fasthttp.StatusOK, map[string]string{"status": "ok"})
 }
 
+func (h *Handler) Ready(c *middleware.Context) {
+	c.JSON(fasthttp.StatusOK, map[string]string{"status": "ready"})
+}
+
 func (h *Handler) Login(c *middleware.Context) {
 	status, body, contentType, err := h.svc.ForwardAuth(fasthttp.MethodPost, "/login", c.PostBody(), h.collectHeaders(c, false))
 	if err != nil {

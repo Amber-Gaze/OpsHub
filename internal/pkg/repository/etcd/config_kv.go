@@ -85,3 +85,16 @@ func (k *ConfigKV) List(ctx context.Context) (map[string][]byte, error) {
 	}
 	return out, nil
 }
+
+// Ping 探测与 etcd 集群的连通性（用于 readiness）。
+func (k *ConfigKV) Ping(ctx context.Context) error {
+	if k == nil || k.cli == nil {
+		return fmt.Errorf("etcd: no client")
+	}
+	eps := k.cli.Endpoints()
+	if len(eps) == 0 {
+		return fmt.Errorf("etcd: no endpoints")
+	}
+	_, err := k.cli.Status(ctx, eps[0])
+	return err
+}

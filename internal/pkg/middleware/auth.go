@@ -41,6 +41,7 @@ func JWTAuthMiddleware() Middleware {
 			if c.Username == "" {
 				c.Username = claims.Subject
 			}
+			c.IsAdmin = claims.IsAdmin
 
 			next(c)
 		}
@@ -49,7 +50,7 @@ func JWTAuthMiddleware() Middleware {
 
 func parseBearer(h string) (string, error) {
 	parts := strings.SplitN(h, " ", 2)
-	if len(parts) != 2 || parts[0] != "Bearer" {
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
 		return "", errors.New("invalid bearer")
 	}
 	return parts[1], nil
