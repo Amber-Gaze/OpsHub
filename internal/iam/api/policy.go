@@ -9,7 +9,11 @@ func (s *Service) ListPolicies() [][]string {
 	if s.enf == nil {
 		return nil
 	}
-	return s.enf.GetPolicy()
+	pol, err := s.enf.GetPolicy()
+	if err != nil {
+		return nil
+	}
+	return pol
 }
 
 // ListGroupingPolicies 返回所有 g（用户-角色）关系。
@@ -17,7 +21,11 @@ func (s *Service) ListGroupingPolicies() [][]string {
 	if s.enf == nil {
 		return nil
 	}
-	return s.enf.GetGroupingPolicy()
+	pol, err := s.enf.GetGroupingPolicy()
+	if err != nil {
+		return nil
+	}
+	return pol
 }
 
 // AddPolicy 添加 p 策略：sub 可为用户名或角色名；obj 支持通配如 config:pay:*；act 为 read|write|delete|grant|*。
