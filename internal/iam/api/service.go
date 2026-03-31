@@ -1,13 +1,17 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 	"unicode"
 
+	"github.com/casbin/casbin/v2"
+
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/authutil"
+	"github.com/Amber-Gaze/OpsHub/internal/pkg/casbinx"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/jwt"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/middleware"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/passhash"
@@ -15,11 +19,13 @@ import (
 )
 
 var (
-	ErrInvalidUser  = errors.New("invalid user")
-	ErrWeakPassword = errors.New("password must be at least 8 characters and include letters, digits, and symbols")
-	ErrInvalidToken = errors.New("invalid token")
-	ErrTokenExpired = errors.New("token expired")
-	defaultTokenTTL = time.Hour
+	ErrInvalidUser     = errors.New("invalid user")
+	ErrWeakPassword    = errors.New("password must be at least 8 characters and include letters, digits, and symbols")
+	ErrInvalidToken    = errors.New("invalid token")
+	ErrTokenExpired    = errors.New("token expired")
+	ErrForbidden       = errors.New("forbidden")
+	ErrCasbinDisabled  = errors.New("casbin not initialized")
+	defaultTokenTTL    = time.Hour
 )
 
 const defaultJWTIssuer = "opshub-auth"
@@ -29,13 +35,15 @@ type Service struct {
 	jwtSecret      []byte
 	tokenTTL       time.Duration
 	issuer         string
+	enf            *casbin.SyncedEnforcer
 }
 
-func NewService() *Service {
-	return NewServiceWithSecret(authutil.DefaultDecisionSecret, defaultTokenTTL)
+// NewService 创建 IAM 服务；enf 可为 nil（则仅 IsAdmin 能通过配置鉴权，非管理员一律拒绝配置操作）。
+func NewService(enf *casbin.SyncedEnforcer) *Service {
+	return newService(enf, authutil.DefaultDecisionSecret, defaultTokenTTL)
 }
 
-func NewServiceWithSecret(secret []byte, ttl time.Duration) *Service {
+func newService(enf *casbin.SyncedEnforcer, secret []byte, ttl time.Duration) *Service {
 	if ttl <= 0 {
 		ttl = defaultTokenTTL
 	}
@@ -47,6 +55,7 @@ func NewServiceWithSecret(secret []byte, ttl time.Duration) *Service {
 		jwtSecret:      append([]byte(nil), secret...),
 		tokenTTL:       ttl,
 		issuer:         defaultJWTIssuer,
+		enf:            enf,
 	}
 }
 
@@ -207,7 +216,37 @@ func (s *Service) Authorize(token, resource, action string) (*middleware.AuthDec
 		action = "UNKNOWN"
 	}
 
-	decisionPayload := fmt.Sprintf("allow|%s|%s|%s|%d", subject, action, resource, time.Now().UTC().Unix())
+	ctx := context.Background()
+	userInfo, err := store.Client().Users().Get(ctx, subject)
+	if err != nil {
+		return nil, ErrInvalidUser
+	}
+
+	allow := false
+	casbinObj := resource
+	casbinAct := action
+
+	if casbinx.IsConfigResourcePath(resource) {
+		casbinObj, casbinAct = casbinx.NormalizeConfigResource(resource, action)
+		if userInfo.IsAdmin {
+			allow = true
+		} else if s.enf != nil {
+			allow, err = s.enf.Enforce(subject, casbinObj, casbinAct)
+			if err != nil {
+				return nil, err
+			}
+		}
+	} else {
+		if userInfo.IsAdmin {
+			allow = true
+		}
+	}
+
+	if !allow {
+		return nil, ErrForbidden
+	}
+
+	decisionPayload := fmt.Sprintf("allow|%s|%s|%s|%s|%s|%d", subject, action, resource, casbinObj, casbinAct, time.Now().UTC().Unix())
 	signature := authutil.Sign(decisionPayload, s.decisionSecret)
 
 	return &middleware.AuthDecision{

@@ -145,8 +145,12 @@ func (h *Handler) Authorize(c *middleware.Context) {
 			c.Abort(fasthttp.StatusUnauthorized, err.Error())
 		case errors.Is(err, ErrTokenExpired):
 			c.Abort(fasthttp.StatusUnauthorized, err.Error())
+		case errors.Is(err, ErrInvalidUser):
+			c.Abort(fasthttp.StatusUnauthorized, err.Error())
+		case errors.Is(err, ErrForbidden):
+			c.Abort(fasthttp.StatusForbidden, "forbidden")
 		default:
-			c.Abort(fasthttp.StatusForbidden, err.Error())
+			c.Abort(fasthttp.StatusInternalServerError, err.Error())
 		}
 		return
 	}

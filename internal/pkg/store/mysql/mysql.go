@@ -73,3 +73,15 @@ func GetMySQLFactoryOr(opts *options.MySQLOptions) (store.Factory, error) {
 
 	return mysqlFactory, nil
 }
+
+// GetGORM 返回已初始化的 *gorm.DB（供 Casbin 等组件复用连接）。
+func GetGORM() (*gorm.DB, error) {
+	if mysqlFactory == nil {
+		return nil, fmt.Errorf("mysql store not initialized")
+	}
+	ds, ok := mysqlFactory.(*datastore)
+	if !ok {
+		return nil, fmt.Errorf("unexpected mysql factory type")
+	}
+	return ds.db, nil
+}

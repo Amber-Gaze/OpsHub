@@ -9,6 +9,7 @@ import (
 
 	"github.com/Amber-Gaze/OpsHub/internal/iam/api"
 	"github.com/Amber-Gaze/OpsHub/internal/iam/bootstrap"
+	"github.com/Amber-Gaze/OpsHub/internal/pkg/casbinx"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/options"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/store"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/store/mysql"
@@ -57,6 +58,17 @@ func main() {
 	store.SetClient(factory)
 	bootstrap.EnsureAdminFromConfig(context.Background())
 
+	gdb, err := mysql.GetGORM()
+	if err != nil {
+		logger.Errorf("iam: get gorm db: %v", err)
+		Exit(1)
+	}
+	enf, err := casbinx.NewSyncedEnforcer(gdb)
+	if err != nil {
+		logger.Errorf("iam: casbin init: %v", err)
+		Exit(1)
+	}
+
 	monitorBase := fallbackMonitorBasePort + authMonitorOffset
 	if options.GetAuthMonitoringPort() > 0 {
 		monitorBase = options.GetAuthMonitoringPort()
@@ -64,7 +76,7 @@ func main() {
 	observability.StartDiagnostics("iam", monitorBase)
 
 	r := router.New()
-	svc := api.NewService()
+	svc := api.NewService(enf)
 	api.RegisterRoutes(r, svc)
 
 	addr := fmt.Sprintf(":%d", options.GetAuthHTTPPort())

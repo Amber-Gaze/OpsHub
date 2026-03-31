@@ -20,6 +20,15 @@ func RegisterRoutes(r *router.Router, svc *Service) {
 	group.POST("/refresh", handler.Refresh)
 	group.POST("/authorize", handler.Authorize)
 
+	pol := group.Group("/policies", middleware.JWTAuthMiddleware())
+	{
+		pol.GET("/", handler.ListPolicies, middleware.RequireAdmin())
+		pol.POST("/rule", handler.AddPolicyRule)
+		pol.POST("/rule/delete", handler.RemovePolicyRule)
+		pol.POST("/roles", handler.AddRoleBinding)
+		pol.POST("/roles/delete", handler.RemoveRoleBinding)
+	}
+
 	users := group.Group(utils.UserPath, middleware.JWTAuthMiddleware())
 	{
 		users.GET("/", handler.ListUsers, middleware.RequireAdmin())
