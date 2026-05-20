@@ -2,20 +2,15 @@ package logger
 
 import (
 	"os"
-	"path/filepath"
-	"sync"
 	"time"
 
+	"github.com/Amber-Gaze/OpsHub/internal/pkg/options"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"gopkg.in/natefinch/lumberjack.v2"
-
-	"github.com/Amber-Gaze/OpsHub/internal/pkg/options"
 )
 
 var (
-	logger        *zap.SugaredLogger
-	rotationMutex sync.Mutex
+	logger *zap.SugaredLogger
 )
 
 func checkConfigDefaults(cfg *options.LoggerConf) {
@@ -23,19 +18,22 @@ func checkConfigDefaults(cfg *options.LoggerConf) {
 		cfg.LogDir = "../logs"
 	}
 	if cfg.LogFileName == "" {
-		cfg.LogFileName = "ops_hub.log"
-	}
-	if cfg.MaxSize == 0 {
-		cfg.MaxSize = 10 // megabytes
+		cfg.LogFileName = "service.log"
 	}
 	if cfg.MaxBackups == 0 {
-		cfg.MaxBackups = 5
+		cfg.MaxBackups = 72 // 默认保留 72 个文件
 	}
 	if cfg.MaxAge == 0 {
 		cfg.MaxAge = 7 // days
 	}
 	if cfg.LogLevel == "" {
 		cfg.LogLevel = "info"
+	}
+	if cfg.Rotation == "" {
+		cfg.Rotation = "hour"
+	}
+	if cfg.Encoding == "" {
+		cfg.Encoding = "json"
 	}
 }
 
@@ -51,8 +49,8 @@ func customCallerEncoder(caller zapcore.EntryCaller, enc zapcore.PrimitiveArrayE
 	enc.AppendString("[" + caller.TrimmedPath() + "]")
 }
 
-// Updated encoder configuration to use custom time and caller encoders.
-func getLogEncoder() zapcore.Encoder {
+// getLogEncoder returns a JSON or Console encoder based on cfg.Encoding.
+func getLogEncoder(cfg *options.LoggerConf) zapcore.Encoder {
 	encoderConf := zapcore.EncoderConfig{
 		TimeKey:        "time",
 		LevelKey:       "level",
@@ -66,23 +64,30 @@ func getLogEncoder() zapcore.Encoder {
 		EncodeDuration: zapcore.StringDurationEncoder,
 		EncodeCaller:   customCallerEncoder,
 	}
-	return zapcore.NewJSONEncoder(encoderConf)
+
+	switch cfg.Encoding {
+	case "console":
+		return zapcore.NewConsoleEncoder(encoderConf)
+	default:
+		return zapcore.NewJSONEncoder(encoderConf)
+	}
 }
 
 func getLogWriter(cfg *options.LoggerConf) zapcore.WriteSyncer {
-	logFilePath := filepath.Join(cfg.LogDir, cfg.LogFileName)
+	rotator, err := NewTimeRotator(
+		cfg.LogDir,
+		cfg.LogFileName,
+		cfg.Rotation,
+		time.Duration(cfg.MaxAge)*24*time.Hour,
+		cfg.MaxBackups,
+		cfg.Compress,
+	)
 
-	// Initialize lumberjack logger for log rotation
-	lumberJackLogger := &lumberjack.Logger{
-		Filename:   logFilePath,
-		MaxSize:    cfg.MaxSize,    // megabytes
-		MaxBackups: cfg.MaxBackups, // number of backups
-		MaxAge:     cfg.MaxAge,     // days
-		Compress:   cfg.Compress,           // whether to compress rotated files
+	if err != nil {
+		// 如果创建 TimeRotator 失败，回退到标准错误输出
+		return zapcore.AddSync(os.Stderr)
 	}
-
-	// Use MultiWriteSyncer to write to both the file and lumberjack
-	return zapcore.NewMultiWriteSyncer(zapcore.AddSync(lumberJackLogger))
+	return rotator
 }
 
 // SetLogLevel sets the minimum log level for the logger and ensures logs are written to the file.
@@ -114,7 +119,7 @@ func InitLogger(cfg *options.LoggerConf) error {
 	}
 
 	core := zapcore.NewCore(
-		getLogEncoder(),
+		getLogEncoder(cfg),
 		getLogWriter(cfg),
 		getLogLevel(cfg),
 	)
@@ -175,11 +180,10 @@ func Errorf(template string, args ...interface{}) {
 }
 
 // GetLogger returns the global logger instance.
-func GetLogger() *zap.SugaredLogger {
-	return logger
-}
+// func GetLogger() *zap.SugaredLogger {
+// 	return logger
+// }
 
 func WithField(key, value string) *zap.SugaredLogger {
 	return logger.With(key, value)
 }
-

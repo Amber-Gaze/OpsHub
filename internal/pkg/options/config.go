@@ -13,13 +13,14 @@ var (
 )
 
 type LoggerConf struct {
-	Compress    bool   `mapstructure:"compress"`      // Whether to compress rotated log files
-	MaxSize     int    `mapstructure:"max_size"`      // Maximum size in megabytes of the log file before it gets rotated
-	MaxBackups  int    `mapstructure:"max_backups"`   // Maximum number of old log files to retain
-	MaxAge      int    `mapstructure:"max_age"`       // Maximum number of days to retain old log files
 	LogDir      string `mapstructure:"log_dir"`       // Directory to store log files
-	LogFileName string `mapstructure:"log_file_name"` // Base name of the log file
-	LogLevel    string `mapstructure:"log_level"`     // Minimum log level
+	LogFileName string `mapstructure:"log_file_name"` // Base name of the log file (e.g. "service.log")
+	LogLevel    string `mapstructure:"log_level"`     // Minimum log level: debug, info, warn, error
+	MaxAge      int    `mapstructure:"max_age"`       // Maximum number of days to retain old log files (0 = no limit)
+	MaxBackups  int    `mapstructure:"max_backups"`   // Maximum number of old log files to retain (0 = no limit)
+	Rotation    string `mapstructure:"rotation"`      // Log rotation precision: "minute", "hour"(default), "day"
+	Encoding    string `mapstructure:"encoding"`      // Log output format: "json"(default) or "console"
+	Compress    bool   `mapstructure:"compress"`      // Whether to gzip-compress rotated log files
 }
 
 type MainConf struct {

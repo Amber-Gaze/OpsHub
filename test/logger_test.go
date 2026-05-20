@@ -10,7 +10,10 @@ import (
 
 func TestLogger(t *testing.T) {
 	// is := assert.New(t)
-	logger.InitLogger(&options.LoggerConf{LogLevel: "info", LogDir: "../logs", LogFileName: "test.log", MaxSize: 100, MaxBackups: 5, MaxAge: 7})
+	logger.InitLogger(&options.LoggerConf{
+		LogLevel: "info", LogDir: "../logs",
+		LogFileName: "test.log",
+		MaxBackups:  5, MaxAge: 7})
 	logger.Infof("%s is ok", "test")
 	logger.Debugf("%s is ok", "debug")
 

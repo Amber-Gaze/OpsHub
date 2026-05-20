@@ -7,12 +7,13 @@ var builtinDefaults = &Config{
 	},
 	Logger: &LoggerConf{
 		Compress:    false,
-		MaxSize:     10,
-		MaxBackups:  5,
+		MaxBackups:  30,
 		MaxAge:      7,
-		LogDir:      "./logs",
+		LogDir:      "../logs",
 		LogFileName: "ops_hub.log",
 		LogLevel:    "info",
+		Rotation:    "hour",
+		Encoding:    "json",
 	},
 	Gateway: &GatewayConf{
 		HTTPPort:       8001,
