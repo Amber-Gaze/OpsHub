@@ -59,10 +59,6 @@ func GetLoggerCompress() bool {
 	return GetLoggerConf().Compress
 }
 
-func GetLoggerMaxSize() int {
-	return GetLoggerConf().MaxSize
-}
-
 func GetLoggerMaxBackups() int {
 	return GetLoggerConf().MaxBackups
 }
