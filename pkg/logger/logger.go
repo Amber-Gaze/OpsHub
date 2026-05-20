@@ -78,7 +78,7 @@ func getLogWriter(cfg *options.LoggerConf) zapcore.WriteSyncer {
 		MaxSize:    cfg.MaxSize,    // megabytes
 		MaxBackups: cfg.MaxBackups, // number of backups
 		MaxAge:     cfg.MaxAge,     // days
-		Compress:   true,           // whether to compress rotated files
+		Compress:   cfg.Compress,           // whether to compress rotated files
 	}
 
 	// Use MultiWriteSyncer to write to both the file and lumberjack
@@ -178,3 +178,8 @@ func Errorf(template string, args ...interface{}) {
 func GetLogger() *zap.SugaredLogger {
 	return logger
 }
+
+func WithField(key, value string) *zap.SugaredLogger {
+	return logger.With(key, value)
+}
+
