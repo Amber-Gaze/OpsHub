@@ -8,6 +8,7 @@ import (
 
 	json "github.com/json-iterator/go"
 
+	"github.com/Amber-Gaze/OpsHub/internal/pkg/casbinx"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/middleware"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/passhash"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/store"
@@ -72,7 +73,21 @@ func (h *Handler) Login(c *middleware.Context) {
 }
 
 func (h *Handler) Logout(c *middleware.Context) {
+	token := extractBearer(c)
+	// 未配置 Redis 时为空操作；令牌不合法也按成功处理（避免泄露令牌有效性）。
+	if err := h.svc.Logout(c, token); err != nil && !errors.Is(err, ErrInvalidToken) {
+		c.Abort(fasthttp.StatusInternalServerError, err.Error())
+		return
+	}
 	c.JSON(fasthttp.StatusOK, map[string]string{"message": "logged out"})
+}
+
+func extractBearer(c *middleware.Context) string {
+	h := strings.TrimSpace(string(c.Request.Header.Peek("Authorization")))
+	if len(h) > 7 && strings.EqualFold(h[:7], "Bearer ") {
+		return strings.TrimSpace(h[7:])
+	}
+	return h
 }
 
 func (h *Handler) Signup(c *middleware.Context) {
@@ -123,12 +138,13 @@ type authorizeRequest struct {
 }
 
 type authorizeResponse struct {
-	Allow     bool   `json:"allow"`
-	Subject   string `json:"subject"`
-	Action    string `json:"action"`
-	Resource  string `json:"resource"`
-	Decision  string `json:"decision"`
-	Signature string `json:"signature"`
+	Allow     bool            `json:"allow"`
+	Subject   string          `json:"subject"`
+	Action    string          `json:"action"`
+	Resource  string          `json:"resource"`
+	Scope     []casbinx.Grant `json:"scope,omitempty"`
+	Decision  string          `json:"decision"`
+	Signature string          `json:"signature"`
 }
 
 func (h *Handler) Authorize(c *middleware.Context) {
@@ -160,6 +176,7 @@ func (h *Handler) Authorize(c *middleware.Context) {
 		Subject:   decision.Subject,
 		Action:    decision.Action,
 		Resource:  decision.Resource,
+		Scope:     decision.Scope,
 		Decision:  decision.Decision,
 		Signature: decision.Signature,
 	})
@@ -224,6 +241,58 @@ func (h *Handler) GetUser(c *middleware.Context) {
 type changePasswordRequest struct {
 	OldPassword string `json:"old_password"`
 	NewPassword string `json:"new_password"`
+}
+
+// Scope 返回当前令牌用户的配置授权（scope），供控制台展示「我有哪些配置权限」。
+func (h *Handler) Scope(c *middleware.Context) {
+	var req struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(c.PostBody(), &req); err != nil {
+		c.Abort(fasthttp.StatusBadRequest, "invalid request body")
+		return
+	}
+	subject, expiresAt, err := h.svc.parseToken(req.Token)
+	if err != nil {
+		c.Abort(fasthttp.StatusUnauthorized, "invalid token")
+		return
+	}
+	if time.Now().UTC().After(expiresAt) {
+		c.Abort(fasthttp.StatusUnauthorized, "token expired")
+		return
+	}
+	grants, err := h.svc.Scope(subject)
+	if err != nil {
+		c.Abort(fasthttp.StatusInternalServerError, err.Error())
+		return
+	}
+	c.JSON(fasthttp.StatusOK, map[string]any{
+		"subject": subject,
+		"scope":   grants,
+	})
+}
+
+// UserGrants 返回指定用户对配置的授权列表（管理端查看/控制台展示用）。
+func (h *Handler) UserGrants(c *middleware.Context) {
+	name, _ := c.UserValue("name").(string)
+	name = strings.TrimSpace(name)
+	if name == "" {
+		c.Abort(fasthttp.StatusBadRequest, "invalid name")
+		return
+	}
+	if !c.IsAdmin {
+		c.Abort(fasthttp.StatusForbidden, "admin required")
+		return
+	}
+	grants, err := h.svc.UserGrants(name)
+	if err != nil {
+		c.Abort(fasthttp.StatusInternalServerError, err.Error())
+		return
+	}
+	c.JSON(fasthttp.StatusOK, map[string]any{
+		"user":   name,
+		"grants": grants,
+	})
 }
 
 func (h *Handler) ChangePassword(c *middleware.Context) {

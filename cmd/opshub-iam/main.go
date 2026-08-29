@@ -11,6 +11,7 @@ import (
 	"github.com/Amber-Gaze/OpsHub/internal/iam/bootstrap"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/casbinx"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/options"
+	"github.com/Amber-Gaze/OpsHub/internal/pkg/repository/redis"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/store"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/store/mysql"
 	"github.com/Amber-Gaze/OpsHub/pkg/graceful"
@@ -75,13 +76,26 @@ func main() {
 	}
 	observability.StartDiagnostics("iam", monitorBase)
 
-	r := router.New()
+	// Redis（可选）：用于登出令牌黑名单。连接失败自动降级不启用。
+	var closeRedis func() error
 	svc := api.NewService(enf)
+	if cache, err := redis.NewCacheFromConfig(); err != nil {
+		logger.Warnf("iam: redis disabled (connect failed): %v", err)
+	} else if cache != nil {
+		svc.SetRedisCache(cache)
+		closeRedis = cache.Close
+		logger.Infof("iam: redis token-blacklist enabled")
+	}
+
+	r := router.New()
 	api.RegisterRoutes(r, svc)
 
 	addr := fmt.Sprintf(":%d", options.GetAuthHTTPPort())
 	logger.Infof("iam: fasthttp listening on %s", addr)
 	err = graceful.RunServer(addr, r.Handler, options.GetShutdownTimeout(), func() error {
+		if closeRedis != nil {
+			_ = closeRedis()
+		}
 		if closer, ok := factory.(interface{ Close() error }); ok {
 			return closer.Close()
 		}

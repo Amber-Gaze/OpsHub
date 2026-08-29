@@ -15,17 +15,18 @@ import (
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/jwt"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/middleware"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/passhash"
+	"github.com/Amber-Gaze/OpsHub/internal/pkg/repository/redis"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/store"
 )
 
 var (
-	ErrInvalidUser     = errors.New("invalid user")
-	ErrWeakPassword    = errors.New("password must be at least 8 characters and include letters, digits, and symbols")
-	ErrInvalidToken    = errors.New("invalid token")
-	ErrTokenExpired    = errors.New("token expired")
-	ErrForbidden       = errors.New("forbidden")
-	ErrCasbinDisabled  = errors.New("casbin not initialized")
-	defaultTokenTTL    = time.Hour
+	ErrInvalidUser    = errors.New("invalid user")
+	ErrWeakPassword   = errors.New("password must be at least 8 characters and include letters, digits, and symbols")
+	ErrInvalidToken   = errors.New("invalid token")
+	ErrTokenExpired   = errors.New("token expired")
+	ErrForbidden      = errors.New("forbidden")
+	ErrCasbinDisabled = errors.New("casbin not initialized")
+	defaultTokenTTL   = time.Hour
 )
 
 const defaultJWTIssuer = "opshub-auth"
@@ -36,11 +37,46 @@ type Service struct {
 	tokenTTL       time.Duration
 	issuer         string
 	enf            *casbin.SyncedEnforcer
+	cache          *redis.Cache
 }
 
 // NewService 创建 IAM 服务；enf 可为 nil（则仅 IsAdmin 能通过配置鉴权，非管理员一律拒绝配置操作）。
 func NewService(enf *casbin.SyncedEnforcer) *Service {
 	return newService(enf, authutil.DefaultDecisionSecret, defaultTokenTTL)
+}
+
+// SetRedisCache 附加 Redis（可选），用于登出令牌黑名单等场景。
+func (s *Service) SetRedisCache(c *redis.Cache) *Service {
+	s.cache = c
+	return s
+}
+
+func (s *Service) tokenBlacklistKey(token string) string {
+	return "opshub:iam:blacklist:" + token
+}
+
+// Logout 将令牌加入黑名单直至其过期（未配置 Redis 时为空操作，靠令牌自然过期）。
+func (s *Service) Logout(ctx context.Context, token string) error {
+	if s.cache == nil {
+		return nil
+	}
+	subject, exp, err := s.parseToken(token)
+	if err != nil {
+		return err
+	}
+	ttl := time.Until(exp)
+	if ttl <= 0 {
+		return nil
+	}
+	return s.cache.SetString(ctx, s.tokenBlacklistKey(token), subject, ttl)
+}
+
+func (s *Service) isTokenBlacklisted(token string) bool {
+	if s.cache == nil {
+		return false
+	}
+	_, ok := s.cache.GetString(context.Background(), s.tokenBlacklistKey(token))
+	return ok
 }
 
 func newService(enf *casbin.SyncedEnforcer, secret []byte, ttl time.Duration) *Service {
@@ -198,6 +234,58 @@ func (s *Service) Refresh(c *middleware.Context, token string) (LoginResult, err
 	}, nil
 }
 
+// Scope 返回某用户对配置的全部授权（scope）。
+// 管理员 → 全量授权；普通用户 → 由其 casbin 策略（含角色继承）推导出 config/ 对象授权。
+func (s *Service) Scope(subject string) ([]casbinx.Grant, error) {
+	subject = strings.TrimSpace(subject)
+	if subject == "" {
+		return nil, ErrInvalidUser
+	}
+	userInfo, err := store.Client().Users().Get(context.Background(), subject)
+	if err != nil {
+		return nil, ErrInvalidUser
+	}
+	if userInfo.IsAdmin {
+		return casbinx.AdminGrant, nil
+	}
+	return s.collectGrants(subject)
+}
+
+// UserGrants 返回用户实际的 casbin 配置授权（不含管理员短路），供管理端展示。
+func (s *Service) UserGrants(subject string) ([]casbinx.Grant, error) {
+	return s.collectGrants(strings.TrimSpace(subject))
+}
+
+func (s *Service) collectGrants(subject string) ([]casbinx.Grant, error) {
+	if s.enf == nil {
+		return nil, nil
+	}
+	perms, err := s.enf.GetImplicitPermissionsForUser(subject)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]struct{}{}
+	grants := make([]casbinx.Grant, 0, len(perms))
+	for _, p := range perms {
+		if len(p) < 3 || !strings.HasPrefix(p[1], "config/") {
+			continue
+		}
+		key := p[1] + "|" + p[2]
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		grants = append(grants, casbinx.Grant{Obj: p[1], Act: p[2]})
+	}
+	return grants, nil
+}
+
+// Authorize 校验令牌并返回鉴权决策。对配置资源：
+//   - 管理员：始终放行（scope=全量）。
+//   - 普通用户读操作：只要拥有任意配置授权即放行（由配置中心按 scope 精确过滤）；
+//   - 普通用户写/删操作：按具体资源精确校验 casbin。
+//
+// 决策载体 Decision 为 scope 签名串：scope|<subject>|<grantsJSON>|<unix>。
 func (s *Service) Authorize(token, resource, action string) (*middleware.AuthDecision, error) {
 	subject, expiresAt, err := s.parseToken(token)
 	if err != nil {
@@ -205,6 +293,9 @@ func (s *Service) Authorize(token, resource, action string) (*middleware.AuthDec
 	}
 	if time.Now().UTC().After(expiresAt) {
 		return nil, ErrTokenExpired
+	}
+	if s.isTokenBlacklisted(token) {
+		return nil, ErrInvalidToken
 	}
 
 	resource = strings.TrimSpace(resource)
@@ -216,29 +307,31 @@ func (s *Service) Authorize(token, resource, action string) (*middleware.AuthDec
 		action = "UNKNOWN"
 	}
 
-	ctx := context.Background()
-	userInfo, err := store.Client().Users().Get(ctx, subject)
+	userInfo, err := store.Client().Users().Get(context.Background(), subject)
 	if err != nil {
 		return nil, ErrInvalidUser
 	}
 
 	allow := false
-	casbinObj := resource
-	casbinAct := action
-
-	if casbinx.IsConfigResourcePath(resource) {
-		casbinObj, casbinAct = casbinx.NormalizeConfigResource(resource, action)
-		if userInfo.IsAdmin {
-			allow = true
-		} else if s.enf != nil {
-			allow, err = s.enf.Enforce(subject, casbinObj, casbinAct)
-			if err != nil {
-				return nil, err
+	if userInfo.IsAdmin {
+		allow = true
+	} else if casbinx.IsConfigResourcePath(resource) {
+		obj, act := casbinx.NormalizeConfigResource(resource, action)
+		if isConfigWriteAction(act) {
+			// 写/删：精确校验目标资源
+			if s.enf != nil {
+				allow, err = s.enf.Enforce(subject, obj, act)
+				if err != nil {
+					return nil, err
+				}
 			}
-		}
-	} else {
-		if userInfo.IsAdmin {
-			allow = true
+		} else {
+			// 读：拥有任意配置授权即可进入，由配置中心按 scope 过滤
+			grants, gerr := s.collectGrants(subject)
+			if gerr != nil {
+				return nil, gerr
+			}
+			allow = len(grants) > 0
 		}
 	}
 
@@ -246,7 +339,11 @@ func (s *Service) Authorize(token, resource, action string) (*middleware.AuthDec
 		return nil, ErrForbidden
 	}
 
-	decisionPayload := fmt.Sprintf("allow|%s|%s|%s|%s|%s|%d", subject, action, resource, casbinObj, casbinAct, time.Now().UTC().Unix())
+	scope, err := s.Scope(subject)
+	if err != nil {
+		return nil, err
+	}
+	decisionPayload, _ := casbinx.BuildScopePayload(subject, scope)
 	signature := authutil.Sign(decisionPayload, s.decisionSecret)
 
 	return &middleware.AuthDecision{
@@ -254,9 +351,14 @@ func (s *Service) Authorize(token, resource, action string) (*middleware.AuthDec
 		Subject:   subject,
 		Action:    action,
 		Resource:  resource,
+		Scope:     scope,
 		Decision:  decisionPayload,
 		Signature: signature,
 	}, nil
+}
+
+func isConfigWriteAction(act string) bool {
+	return act == "write" || act == "delete"
 }
 
 func (s *Service) parseToken(token string) (string, time.Time, error) {

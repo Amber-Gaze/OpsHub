@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net"
 
+	"github.com/Amber-Gaze/OpsHub/internal/pkg/casbinx"
 	"github.com/valyala/fasthttp"
 )
 
@@ -37,12 +38,13 @@ func (c *Context) Abort(code int, msg string) {
 }
 
 type AuthDecision struct {
-	Allow     bool   `json:"allow"`
-	Subject   string `json:"subject"`
-	Action    string `json:"action"`
-	Resource  string `json:"resource"`
-	Decision  string `json:"decision"`
-	Signature string `json:"signature"`
+	Allow     bool            `json:"allow"`
+	Subject   string          `json:"subject"`
+	Action    string          `json:"action"`
+	Resource  string          `json:"resource"`
+	Scope     []casbinx.Grant `json:"scope,omitempty"`
+	Decision  string          `json:"decision"`
+	Signature string          `json:"signature"`
 }
 
 func (c *Context) SetAuthDecision(d *AuthDecision) {

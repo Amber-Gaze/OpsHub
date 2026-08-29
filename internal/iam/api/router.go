@@ -19,12 +19,15 @@ func RegisterRoutes(r *router.Router, svc *Service) {
 	group.POST("/logout", handler.Logout)
 	group.POST("/refresh", handler.Refresh)
 	group.POST("/authorize", handler.Authorize)
+	group.POST("/scope", handler.Scope)
 
 	pol := group.Group("/policies", middleware.JWTAuthMiddleware())
 	{
 		pol.GET("/", handler.ListPolicies, middleware.RequireAdmin())
 		pol.POST("/rule", handler.AddPolicyRule)
 		pol.POST("/rule/delete", handler.RemovePolicyRule)
+		pol.POST("/config-grant", handler.ConfigGrant)
+		pol.POST("/config-revoke", handler.ConfigRevoke)
 		pol.POST("/roles", handler.AddRoleBinding)
 		pol.POST("/roles/delete", handler.RemoveRoleBinding)
 	}
@@ -33,10 +36,11 @@ func RegisterRoutes(r *router.Router, svc *Service) {
 	{
 		users.GET("/", handler.ListUsers, middleware.RequireAdmin())
 		users.DELETE("/", handler.DeleteUsers, middleware.RequireAdmin())
-		users.DELETE("/:name", handler.DeleteUser)
-		users.GET("/:name", handler.GetUser, middleware.RequireSelfOrAdmin())
-		users.PUT("/:name/change-passwd", handler.ChangePassword, middleware.RequireSelfOrAdmin())
-		users.PUT("/:name", handler.UpdateUser, middleware.RequireSelfOrAdmin())
+		users.DELETE("/{name}", handler.DeleteUser)
+		users.GET("/{name}", handler.GetUser, middleware.RequireSelfOrAdmin())
+		users.GET("/{name}/grants", handler.UserGrants, middleware.RequireAdmin())
+		users.PUT("/{name}/change-passwd", handler.ChangePassword, middleware.RequireSelfOrAdmin())
+		users.PUT("/{name}", handler.UpdateUser, middleware.RequireSelfOrAdmin())
 	}
 	middleware.AttachRouterErrors(r)
 }

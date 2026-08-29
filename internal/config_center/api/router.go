@@ -16,11 +16,21 @@ func RegisterRoutes(r *router.Router, svc *Service, middlewares ...middleware.Mi
 
 	registerConfigGroup := func(prefix string) {
 		config := group.Group(prefix)
+
+		// 控制台分层浏览：/configs/tree[/business[/module[/name]]]
+		config.GET("/tree", handler.Tree)
+		config.GET("/tree/{business}", handler.Business)
+		config.GET("/tree/{business}/{module}", handler.Module)
+		config.GET("/tree/{business}/{module}/{name}", handler.Item)
+		config.PUT("/tree/{business}/{module}/{name}", handler.UpdateItem)
+		config.DELETE("/tree/{business}/{module}/{name}", handler.DeleteItem)
+
+		// 扁平 CRUD（兼容单段 key）
 		config.GET("", handler.List)
-		config.GET("/:key", handler.Get)
+		config.GET("/{key}", handler.Get)
 		config.POST("", handler.Create)
-		config.PUT("/:key", handler.Update)
-		config.DELETE("/:key", handler.Delete)
+		config.PUT("/{key}", handler.Update)
+		config.DELETE("/{key}", handler.Delete)
 	}
 
 	registerConfigGroup("/configs")

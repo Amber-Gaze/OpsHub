@@ -9,6 +9,7 @@ import (
 	"github.com/Amber-Gaze/OpsHub/internal/config_center/api"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/options"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/repository/etcd"
+	"github.com/Amber-Gaze/OpsHub/internal/pkg/repository/redis"
 	"github.com/Amber-Gaze/OpsHub/pkg/graceful"
 	"github.com/Amber-Gaze/OpsHub/pkg/logger"
 	"github.com/Amber-Gaze/OpsHub/pkg/observability"
@@ -54,8 +55,9 @@ func main() {
 	observability.StartDiagnostics("config-center", monitorBase)
 
 	var (
-		svc       *api.Service
-		closeEtcd func() error
+		svc        *api.Service
+		closeEtcd  func() error
+		closeRedis func() error
 	)
 	if ec := options.GetEtcdConf(); ec != nil && len(ec.Endpoints) > 0 {
 		kv, err := etcd.NewConfigKV(ec.Endpoints, ec.Prefix)
@@ -71,12 +73,29 @@ func main() {
 		logger.Infof("config-center: in-memory store (set etcd.endpoints to enable persistence)")
 	}
 
+	// Redis L1 读缓存（可选，混存：etcd 主存 + Redis 缓存）。连接失败自动降级不启用。
+	if cache, err := redis.NewCacheFromConfig(); err != nil {
+		logger.Warnf("config-center: redis cache disabled (connect failed): %v", err)
+	} else if cache != nil {
+		svc.SetRedisCache(cache)
+		closeRedis = cache.Close
+		logger.Infof("config-center: redis L1 cache enabled (ttl=%s)", cache.TTL())
+	}
+
 	r := router.New()
 	api.RegisterRoutes(r, svc)
 
 	addr := fmt.Sprintf(":%d", options.GetConfigCenterHTTPPort())
 	logger.Infof("config-center: fasthttp listening on %s (routes: /configs, /internal/configs)", addr)
-	err = graceful.RunServer(addr, r.Handler, options.GetShutdownTimeout(), closeEtcd)
+	err = graceful.RunServer(addr, r.Handler, options.GetShutdownTimeout(), func() error {
+		if closeRedis != nil {
+			_ = closeRedis()
+		}
+		if closeEtcd != nil {
+			return closeEtcd()
+		}
+		return nil
+	})
 	if err != nil {
 		logger.Errorf("config-center: serve: %v", err)
 		Exit(1)

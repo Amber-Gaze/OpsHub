@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Amber-Gaze/OpsHub/internal/pkg/casbinx"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/middleware"
 	"github.com/valyala/fasthttp"
 )
@@ -55,15 +56,30 @@ type authorizeReq struct {
 }
 
 type authorizeResp struct {
-	Allow     bool   `json:"allow"`
-	Subject   string `json:"subject"`
-	Action    string `json:"action"`
-	Resource  string `json:"resource"`
-	Decision  string `json:"decision"`
-	Signature string `json:"signature"`
+	Allow     bool            `json:"allow"`
+	Subject   string          `json:"subject"`
+	Action    string          `json:"action"`
+	Resource  string          `json:"resource"`
+	Scope     []casbinx.Grant `json:"scope"`
+	Decision  string          `json:"decision"`
+	Signature string          `json:"signature"`
 }
 
-// Authorize 调用 IAM /authorize，返回鉴权决策，供 Gateway 转发配置请求时携带 X-Auth-* 头。
+// AuthError 携带上游 IAM 返回的 HTTP 状态码，便于网关原样透传（401/403 等）。
+type AuthError struct {
+	Status int
+	Err    error
+}
+
+func (e *AuthError) Error() string {
+	return e.Err.Error()
+}
+
+func (e *AuthError) Unwrap() error {
+	return e.Err
+}
+
+// Authorize 调用 IAM /authorize，返回鉴权决策（含 scope），供 Gateway 转发配置请求时携带 X-Auth-* 头。
 func (s *Service) Authorize(token, resource, action string) (*middleware.AuthDecision, error) {
 	if strings.TrimSpace(s.authBaseURL) == "" {
 		return nil, fmt.Errorf("auth service url is not configured")
@@ -74,7 +90,7 @@ func (s *Service) Authorize(token, resource, action string) (*middleware.AuthDec
 		return nil, err
 	}
 	if status != fasthttp.StatusOK {
-		return nil, fmt.Errorf("authorize returned status %d", status)
+		return nil, &AuthError{Status: status, Err: fmt.Errorf("authorize returned status %d", status)}
 	}
 	var resp authorizeResp
 	if err := json.Unmarshal(respBody, &resp); err != nil {
@@ -85,6 +101,7 @@ func (s *Service) Authorize(token, resource, action string) (*middleware.AuthDec
 		Subject:   resp.Subject,
 		Action:    resp.Action,
 		Resource:  resp.Resource,
+		Scope:     resp.Scope,
 		Decision:  resp.Decision,
 		Signature: resp.Signature,
 	}, nil

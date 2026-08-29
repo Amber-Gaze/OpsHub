@@ -46,11 +46,14 @@ mysql:
   password: "liya1234"
   database: "opshub_db"
 
+# Redis：作为配置中心 L1 读缓存（etcd 主存 + Redis 混存）与 IAM 登出令牌黑名单。
+# enabled: nil=自动（尝试连接，失败则降级不启用）；true=强制；false=禁用
 redis:
   host: "localhost"
   port: 6379
   password: "liya1234"
   db: 0
+  enabled: true
 
 # 可选：填写 endpoints 后配置中心将使用 etcd 持久化（需本地或集群 etcd 可达）
 # etcd:

@@ -69,6 +69,19 @@ type RedisConf struct {
 	DB       int    `mapstructure:"db"`
 	Host     string `mapstructure:"host"`
 	Password string `mapstructure:"password"`
+	// Enabled 是否启用 Redis：nil 表示自动（尝试连接，失败则降级不启用）；true 强制；false 禁用。
+	Enabled *bool `mapstructure:"enabled"`
+}
+
+// IsEnabled 判断是否应尝试启用 Redis（默认自动启用）。
+func (c *RedisConf) IsEnabled() bool {
+	if c == nil {
+		return false
+	}
+	if c.Enabled != nil {
+		return *c.Enabled
+	}
+	return true
 }
 
 // EtcdConf 可选；填写 endpoints 后配置中心使用 etcd 持久化（见 repository/etcd.ConfigKV）。

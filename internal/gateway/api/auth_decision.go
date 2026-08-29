@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"strings"
 
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/middleware"
@@ -30,7 +31,13 @@ func RequireAuthDecision(svc *Service) middleware.Middleware {
 			}
 			decision, err := svc.Authorize(token, resource, action)
 			if err != nil {
-				c.Abort(fasthttp.StatusBadGateway, "authorize failed: "+err.Error())
+				var ae *AuthError
+				if errors.As(err, &ae) && ae.Status >= 400 && ae.Status < 500 {
+					// 401/403 等由 IAM 判定的结果原样透传
+					c.Abort(ae.Status, "permission denied")
+				} else {
+					c.Abort(fasthttp.StatusBadGateway, "authorize failed: "+err.Error())
+				}
 				return
 			}
 			c.SetAuthDecision(decision)

@@ -26,7 +26,7 @@ func TestLoadConfig(t *testing.T) {
 	fmt.Printf("%d %d %d\n", conf.Auth.GRPCPort, conf.Auth.HTTPPort, conf.Main.MonitoringPort)
 
 	is.NotNil(conf.Logger)
-	fmt.Printf("%s/%s %s %d %d\n", conf.Logger.LogDir, conf.Logger.LogFileName, conf.Logger.LogLevel, conf.Logger.MaxSize, conf.Logger.MaxBackups)
+	fmt.Printf("%s/%s %s %s %d\n", conf.Logger.LogDir, conf.Logger.LogFileName, conf.Logger.LogLevel, conf.Logger.Rotation, conf.Logger.MaxBackups)
 
 	is.NotNil(conf.MySQL)
 	fmt.Printf("%s:%d -u %s -p%s\n", conf.MySQL.Host, conf.MySQL.Port, conf.MySQL.User, conf.MySQL.Password)

@@ -27,15 +27,48 @@ func RegisterRoutes(r *router.Router, svc *Service, cfg RoutesConfig) {
 	group.POST("/refresh", handler.Refresh)
 
 	group.Use(middleware.JWTAuthMiddleware())
-	group.Use(RequireAuthDecision(svc))
 
-	configs := group.Group(utils.ConfigPath)
+	// 配置中心：经 RequireAuthDecision（IAM scope）鉴权后透传，配置中心按 scope 精确过滤/校验。
+	configs := group.Group(utils.ConfigPath, RequireAuthDecision(svc))
 	{
+		// 控制台分层浏览透传：/configs/tree[/business[/module[/name]]]
+		configs.GET("/tree", handler.GetTree)
+		configs.GET("/tree/{business}", handler.GetBusiness)
+		configs.GET("/tree/{business}/{module}", handler.GetModule)
+		configs.GET("/tree/{business}/{module}/{name}", handler.GetItem)
+		configs.PUT("/tree/{business}/{module}/{name}", handler.UpdateItem)
+		configs.DELETE("/tree/{business}/{module}/{name}", handler.DeleteItem)
+
+		// 扁平 CRUD 透传（兼容单段 key）
 		configs.GET("/", handler.ListConfigs)
-		configs.GET("/:key", handler.GetConfig)
+		configs.GET("/{key}", handler.GetConfig)
 		configs.POST("/", handler.CreateConfig)
-		configs.PUT("/:key", handler.UpdateConfig)
-		configs.DELETE("/:key", handler.DeleteConfig)
+		configs.PUT("/{key}", handler.UpdateConfig)
+		configs.DELETE("/{key}", handler.DeleteConfig)
+	}
+
+	// 用户与策略管理：透传到 IAM，由 IAM 自行 JWT/管理员鉴权。
+	// 网关作为统一入口，后续 IAM 新增接口只需在 IAM 侧注册路由即可复用透传。
+	users := group.Group(utils.UserPath)
+	{
+		users.GET("/", handler.ForwardUsers)
+		users.DELETE("/", handler.ForwardUsers)
+		users.GET("/{name}", handler.ForwardUsers)
+		users.PUT("/{name}", handler.ForwardUsers)
+		users.DELETE("/{name}", handler.ForwardUsers)
+		users.GET("/{name}/grants", handler.ForwardUsers)
+		users.PUT("/{name}/change-passwd", handler.ForwardUsers)
+	}
+
+	policies := group.Group("/policies")
+	{
+		policies.GET("/", handler.ForwardPolicies)
+		policies.POST("/rule", handler.ForwardPolicies)
+		policies.POST("/rule/delete", handler.ForwardPolicies)
+		policies.POST("/config-grant", handler.ForwardPolicies)
+		policies.POST("/config-revoke", handler.ForwardPolicies)
+		policies.POST("/roles", handler.ForwardPolicies)
+		policies.POST("/roles/delete", handler.ForwardPolicies)
 	}
 	middleware.AttachRouterErrors(r)
 }
