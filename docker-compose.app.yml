@@ -1,0 +1,61 @@
+# OpsHub 应用服务容器化（gateway / iam / config-center）。
+# 依赖 docker-compose.yml 里的 mysql/redis/etcd，两个文件需一起使用：
+#
+#   一键起/停:  bash scripts/docker-up.sh | bash scripts/docker-down.sh
+#   等价命令:   docker compose -f docker-compose.yml -f docker-compose.app.yml up -d --build
+#               docker compose -f docker-compose.yml -f docker-compose.app.yml down
+#
+# 服务内使用 ops_hub.docker.yaml（host 全为 compose 服务名 mysql/redis/etcd/iam/config）。
+
+services:
+  iam:
+    build:
+      context: .
+      args:
+        TARGET: opshub-iam
+    image: opshub-iam:latest
+    container_name: opshub-iam
+    restart: unless-stopped
+    ports:
+      - "8004:8004"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      etcd:
+        condition: service_healthy
+
+  config:
+    build:
+      context: .
+      args:
+        TARGET: opshub-config
+    image: opshub-config:latest
+    container_name: opshub-config
+    restart: unless-stopped
+    ports:
+      - "8007:8007"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      etcd:
+        condition: service_healthy
+
+  gateway:
+    build:
+      context: .
+      args:
+        TARGET: opshub-gateway
+    image: opshub-gateway:latest
+    container_name: opshub-gateway
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    depends_on:
+      iam:
+        condition: service_started
+      config:
+        condition: service_started

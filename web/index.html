@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpsHub 运控配置台</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+  <!-- 登录视图 -->
+  <div id="login-view" class="login-wrap">
+    <div class="login-card">
+      <h1>OpsHub 运控配置台</h1>
+      <p class="subtitle">统一配置管理 · 业务 / 模块 / 列表</p>
+      <form id="login-form">
+        <label>用户名</label>
+        <input id="login-user" type="text" autocomplete="username" placeholder="username" required>
+        <label>密码</label>
+        <input id="login-pass" type="password" autocomplete="current-password" placeholder="password" required>
+        <div id="login-error" class="error"></div>
+        <button type="submit">登 录</button>
+      </form>
+      <div class="login-switch"><a id="goto-signup" href="javascript:void(0)">没有账号？注册</a></div>
+
+      <form id="signup-form" class="hidden">
+        <label>用户名</label>
+        <input id="signup-user" type="text" placeholder="username" required>
+        <label>密码（至少 8 位，含字母 / 数字 / 符号）</label>
+        <input id="signup-pass" type="password" placeholder="password" required>
+        <label>邮箱</label>
+        <input id="signup-email" type="text" placeholder="a@b.c">
+        <label>手机</label>
+        <input id="signup-phone" type="text">
+        <div id="signup-error" class="error"></div>
+        <button type="submit">注 册</button>
+        <div class="login-switch"><a id="goto-login" href="javascript:void(0)">已有账号？返回登录</a></div>
+      </form>
+      <p class="login-tip">首个注册用户将自动成为管理员；随后注册为普通用户。</p>
+    </div>
+  </div>
+
+  <!-- 主应用视图 -->
+  <div id="app-view" class="app hidden">
+    <header class="topbar">
+      <div class="brand">OpsHub 运控配置台</div>
+      <nav class="tabs" id="main-tabs">
+        <button class="tab active" data-tab="config">配置管理</button>
+        <button class="tab" data-tab="users">用户管理</button>
+        <button class="tab" data-tab="policies">权限管理</button>
+      </nav>
+      <div class="topbar-right">
+        <span id="scope-badge" class="badge" title="我的配置权限"></span>
+        <span id="user-name" class="user"></span>
+        <button id="logout-btn" class="btn ghost">退出</button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <!-- ============ 配置管理 ============ -->
+      <section id="tab-config" class="tab-view">
+        <aside class="sidebar">
+          <div class="panel-title">配置导航</div>
+          <div id="tree" class="tree"></div>
+          <div id="tree-status" class="status"></div>
+        </aside>
+
+        <main class="content">
+          <section id="module-view" class="hidden">
+            <div class="panel-title-row">
+              <h2 id="module-title">配置项</h2>
+              <button id="add-btn" class="btn primary">新增配置</button>
+            </div>
+            <table class="table">
+              <thead>
+                <tr><th>配置项</th><th>值</th><th>版本</th><th>更新人</th><th>更新时间</th><th>操作</th></tr>
+              </thead>
+              <tbody id="items-body"></tbody>
+            </table>
+            <div id="module-empty" class="empty hidden">该模块暂无配置项，点击「新增配置」创建。</div>
+          </section>
+
+          <section id="welcome" class="welcome">
+            <h2>欢迎使用配置台</h2>
+            <p>在左侧选择业务与模块，查看与管理配置项。</p>
+            <p>配置修改历史会自动保留，可随时与当前值对比。</p>
+          </section>
+        </main>
+      </section>
+
+      <!-- ============ 用户管理 ============ -->
+      <section id="tab-users" class="tab-view hidden">
+        <main class="content">
+          <div class="panel-title-row">
+            <h2>用户管理</h2>
+            <button id="user-add-btn" class="btn primary">新增用户</button>
+          </div>
+          <table class="table">
+            <thead>
+              <tr><th>用户名</th><th>邮箱</th><th>手机</th><th>管理员</th><th>状态</th><th>最近登录</th><th>操作</th></tr>
+            </thead>
+            <tbody id="users-body"></tbody>
+          </table>
+          <div id="users-empty" class="empty hidden">暂无用户。</div>
+          <div id="users-status" class="status"></div>
+        </main>
+      </section>
+
+      <!-- ============ 权限管理 ============ -->
+      <section id="tab-policies" class="tab-view hidden">
+        <main class="content">
+          <div class="panel-title-row"><h2>配置授权（业务 / 模块 / 项）</h2></div>
+          <form id="grant-form" class="inline-form">
+            <input id="grant-sub" placeholder="用户名" required>
+            <input id="grant-business" placeholder="业务，如 pay" required>
+            <input id="grant-module" placeholder="模块（可选）">
+            <input id="grant-item" placeholder="配置项（可选）">
+            <select id="grant-act">
+              <option value="read">read</option>
+              <option value="write">write</option>
+              <option value="delete">delete</option>
+              <option value="grant">grant</option>
+              <option value="*">*</option>
+            </select>
+            <button type="submit" class="btn primary">授权</button>
+            <button type="button" id="grant-revoke-btn" class="btn danger">撤销</button>
+          </form>
+          <div id="grant-hint" class="hint">
+            授权对象规则：仅业务 → <code>config/pay/**</code>；业务+模块 → <code>config/pay/gateway/**</code>；含配置项 → 精确项。
+          </div>
+
+          <div class="panel-title-row"><h2>角色绑定</h2></div>
+          <form id="role-form" class="inline-form">
+            <input id="role-user" placeholder="用户名" required>
+            <input id="role-name" placeholder="角色名" required>
+            <button type="submit" class="btn primary">绑定</button>
+            <button type="button" id="role-unbind-btn" class="btn danger">解绑</button>
+          </form>
+
+          <div class="panel-title-row"><h2>现有策略</h2></div>
+          <div class="panel-title">p · 策略（用户/角色 → 对象 → 动作）</div>
+          <table class="table">
+            <thead><tr><th>sub</th><th>obj</th><th>act</th></tr></thead>
+            <tbody id="policies-body"></tbody>
+          </table>
+          <div class="panel-title">g · 用户-角色</div>
+          <table class="table">
+            <thead><tr><th>user</th><th>role</th></tr></thead>
+            <tbody id="groupings-body"></tbody>
+          </table>
+          <div id="policies-status" class="status"></div>
+        </main>
+      </section>
+    </div>
+  </div>
+
+  <!-- 编辑弹窗 -->
+  <div id="edit-modal" class="modal-mask hidden">
+    <div class="modal">
+      <h3>编辑配置</h3>
+      <div id="edit-key" class="mono"></div>
+      <label>值</label>
+      <textarea id="edit-value" rows="6" spellcheck="false"></textarea>
+      <div id="edit-error" class="error"></div>
+      <div class="modal-actions">
+        <button class="btn ghost" data-close="edit-modal">取消</button>
+        <button id="edit-save" class="btn primary">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 新增弹窗 -->
+  <div id="add-modal" class="modal-mask hidden">
+    <div class="modal">
+      <h3>新增配置</h3>
+      <div id="add-scope" class="mono muted"></div>
+      <label>配置项名称</label>
+      <input id="add-name" type="text" placeholder="如 timeout_ms">
+      <label>值</label>
+      <textarea id="add-value" rows="6" spellcheck="false"></textarea>
+      <div id="add-error" class="error"></div>
+      <div class="modal-actions">
+        <button class="btn ghost" data-close="add-modal">取消</button>
+        <button id="add-save" class="btn primary">创建</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 历史弹窗 -->
+  <div id="history-modal" class="modal-mask hidden">
+    <div class="modal wide">
+      <h3>配置历史</h3>
+      <div id="history-key" class="mono"></div>
+      <div class="history-current">
+        <div class="panel-title">当前值</div>
+        <pre id="history-current" class="mono"></pre>
+      </div>
+      <div class="panel-title">变更记录（点击「差异」查看该次改动前后对比）</div>
+      <table class="table">
+        <thead><tr><th>#</th><th>动作</th><th>版本</th><th>操作人</th><th>时间</th><th>操作</th></tr></thead>
+        <tbody id="history-body"></tbody>
+      </table>
+      <div id="history-diff" class="history-diff hidden">
+        <div class="panel-title" id="history-diff-title">差异对比</div>
+        <pre id="history-diff-view" class="mono"></pre>
+      </div>
+      <div class="modal-actions">
+        <button class="btn ghost" data-close="history-modal">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 新增用户弹窗 -->
+  <div id="user-add-modal" class="modal-mask hidden">
+    <div class="modal">
+      <h3>新增用户</h3>
+      <label>用户名</label><input id="uadd-name" type="text" placeholder="username">
+      <label>密码（至少 8 位，含字母/数字/符号）</label><input id="uadd-pass" type="password">
+      <label>邮箱</label><input id="uadd-email" type="text" placeholder="a@b.c">
+      <label>手机</label><input id="uadd-phone" type="text">
+      <div id="uadd-error" class="error"></div>
+      <div class="modal-actions">
+        <button class="btn ghost" data-close="user-add-modal">取消</button>
+        <button id="uadd-save" class="btn primary">创建</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 编辑用户弹窗 -->
+  <div id="user-edit-modal" class="modal-mask hidden">
+    <div class="modal">
+      <h3>编辑用户 <span id="uedit-name" class="mono muted"></span></h3>
+      <label>邮箱</label><input id="uedit-email" type="text">
+      <label>手机</label><input id="uedit-phone" type="text">
+      <label><input id="uedit-admin" type="checkbox"> 管理员</label>
+      <label>状态（1=启用 0=禁用）</label><input id="uedit-status" type="number" min="0" max="1">
+      <div id="uedit-error" class="error"></div>
+      <div class="modal-actions">
+        <button class="btn ghost" data-close="user-edit-modal">取消</button>
+        <button id="uedit-save" class="btn primary">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 修改密码弹窗 -->
+  <div id="user-passwd-modal" class="modal-mask hidden">
+    <div class="modal">
+      <h3>修改密码 <span id="upasswd-name" class="mono muted"></span></h3>
+      <label>旧密码（修改他人密码可留空）</label><input id="upasswd-old" type="password">
+      <label>新密码（至少 8 位，含字母/数字/符号）</label><input id="upasswd-new" type="password">
+      <div id="upasswd-error" class="error"></div>
+      <div class="modal-actions">
+        <button class="btn ghost" data-close="user-passwd-modal">取消</button>
+        <button id="upasswd-save" class="btn primary">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 用户授权查看弹窗 -->
+  <div id="user-grants-modal" class="modal-mask hidden">
+    <div class="modal">
+      <h3>用户配置权限 <span id="ugrants-name" class="mono muted"></span></h3>
+      <table class="table">
+        <thead><tr><th>对象</th><th>动作</th></tr></thead>
+        <tbody id="ugrants-body"></tbody>
+      </table>
+      <div class="modal-actions">
+        <button class="btn ghost" data-close="user-grants-modal">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 通用提示 -->
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

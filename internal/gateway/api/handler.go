@@ -59,6 +59,21 @@ func (h *Handler) Refresh(c *middleware.Context) {
 	writeProxyResponse(c, status, contentType, body)
 }
 
+// Scope 转发「我的配置权限」查询到 IAM /scope（前端展示当前用户可用范围）。
+func (h *Handler) Scope(c *middleware.Context) {
+	status, body, contentType, err := h.svc.ForwardAuth(fasthttp.MethodPost, "/scope", c.PostBody(), h.collectHeaders(c, false))
+	if err != nil {
+		c.Abort(fasthttp.StatusBadGateway, err.Error())
+		return
+	}
+	writeProxyResponse(c, status, contentType, body)
+}
+
+// Signup 透传注册/新增用户请求到 IAM /signup（经网关 JWT 后仅供登录用户使用）。
+func (h *Handler) Signup(c *middleware.Context) {
+	h.forwardIAM(c, fasthttp.MethodPost, "/signup", c.PostBody())
+}
+
 func (h *Handler) ListConfigs(c *middleware.Context) {
 	status, body, contentType, err := h.forwardConfig(c, fasthttp.MethodGet, "/configs", nil)
 	if err != nil {
@@ -137,6 +152,32 @@ func (h *Handler) GetModule(c *middleware.Context) {
 // GetItem 转发 business/module/name 具体配置项请求。
 func (h *Handler) GetItem(c *middleware.Context) {
 	h.forwardTreePath(c, fasthttp.MethodGet, h.joinParams(c, "business", "module", "name"), nil)
+}
+
+// PullConfigs 转发下游服务拉取配置快照请求（/configs/pull）。
+func (h *Handler) PullConfigs(c *middleware.Context) {
+	status, body, contentType, err := h.forwardConfig(c, fasthttp.MethodGet, "/configs/pull", nil)
+	if err != nil {
+		c.Abort(fasthttp.StatusBadGateway, err.Error())
+		return
+	}
+	writeProxyResponse(c, status, contentType, body)
+}
+
+// GetConfigHistory 转发配置历史对比请求（/configs/history/{key}）。
+func (h *Handler) GetConfigHistory(c *middleware.Context) {
+	raw, _ := c.UserValue("path").(string)
+	key := strings.Trim(strings.TrimSpace(raw), "/")
+	if key == "" {
+		c.Abort(fasthttp.StatusBadRequest, "invalid key")
+		return
+	}
+	status, body, contentType, err := h.forwardConfig(c, fasthttp.MethodGet, "/configs/history/"+key, nil)
+	if err != nil {
+		c.Abort(fasthttp.StatusBadGateway, err.Error())
+		return
+	}
+	writeProxyResponse(c, status, contentType, body)
 }
 
 // UpdateItem 转发 business/module/name 配置项更新请求。

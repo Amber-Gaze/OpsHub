@@ -246,3 +246,53 @@ func TestConfigNoGrants(t *testing.T) {
 		t.Fatalf("GET /configs/pay status = %d, want 404", ctx.Response.StatusCode())
 	}
 }
+
+// TestConfigHistoryRoute 历史对比接口：返回 current + history。
+func TestConfigHistoryRoute(t *testing.T) {
+	r := testRouter(t)
+
+	ctx := dispatch("GET", "/configs/history/pay/gateway/timeout_ms", adminHeaders(), "")
+	r.Handler(ctx)
+	if ctx.Response.StatusCode() != fasthttp.StatusOK {
+		t.Fatalf("GET /configs/history status = %d, body=%s", ctx.Response.StatusCode(), ctx.Response.Body())
+	}
+	body := string(ctx.Response.Body())
+	if !strings.Contains(body, `"current"`) || !strings.Contains(body, `"history"`) {
+		t.Fatalf("history response missing fields, body=%s", body)
+	}
+
+	// 越权查看历史 → 404
+	ctx = dispatch("GET", "/configs/history/cdn/vod/bitrate", authHeaders(casbinx.Grant{Obj: "config/pay/**", Act: "read"}), "")
+	r.Handler(ctx)
+	if ctx.Response.StatusCode() != fasthttp.StatusNotFound {
+		t.Fatalf("GET /configs/history (forbidden) status = %d, want 404", ctx.Response.StatusCode())
+	}
+}
+
+// TestConfigPullRoute 下游拉取接口：可按 business 过滤。
+func TestConfigPullRoute(t *testing.T) {
+	r := testRouter(t)
+
+	ctx := dispatch("GET", "/configs/pull", adminHeaders(), "")
+	r.Handler(ctx)
+	if ctx.Response.StatusCode() != fasthttp.StatusOK {
+		t.Fatalf("GET /configs/pull status = %d, body=%s", ctx.Response.StatusCode(), ctx.Response.Body())
+	}
+	if !strings.Contains(string(ctx.Response.Body()), `"pay/gateway/timeout_ms"`) {
+		t.Fatalf("pull should include pay item, body=%s", ctx.Response.Body())
+	}
+
+	// 按 business 过滤：只返回 pay
+	ctx = dispatch("GET", "/configs/pull?business=pay", adminHeaders(), "")
+	r.Handler(ctx)
+	if ctx.Response.StatusCode() != fasthttp.StatusOK {
+		t.Fatalf("GET /configs/pull?business=pay status = %d", ctx.Response.StatusCode())
+	}
+	body := string(ctx.Response.Body())
+	if !strings.Contains(body, `"pay/gateway/timeout_ms"`) {
+		t.Fatalf("filtered pull should include pay item, body=%s", body)
+	}
+	if strings.Contains(body, `"cdn/vod/bitrate"`) {
+		t.Fatalf("filtered pull should NOT include cdn item, body=%s", body)
+	}
+}

@@ -163,6 +163,9 @@ func (h *Handler) Authorize(c *middleware.Context) {
 			c.Abort(fasthttp.StatusUnauthorized, err.Error())
 		case errors.Is(err, ErrInvalidUser):
 			c.Abort(fasthttp.StatusUnauthorized, err.Error())
+		case errors.Is(err, ErrReadForbidden):
+			// 读无权限：404（不暴露资源是否存在，与前端「无权限」提示一致）
+			c.Abort(fasthttp.StatusNotFound, "no permission")
 		case errors.Is(err, ErrForbidden):
 			c.Abort(fasthttp.StatusForbidden, "forbidden")
 		default:

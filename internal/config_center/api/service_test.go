@@ -107,3 +107,52 @@ func TestServiceUpdateItemVersionBump(t *testing.T) {
 		t.Fatalf("updated_by = %q", cfg.UpdatedBy)
 	}
 }
+
+// TestServiceHistory 验证创建/更新/删除都会留下审计历史，且删除后 current 不存在。
+func TestServiceHistory(t *testing.T) {
+	svc := NewService()
+	if _, err := svc.Create("pay/gateway/timeout_ms", "100", "alice"); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if _, err := svc.Update("pay/gateway/timeout_ms", "200", "bob"); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if err := svc.Delete("pay/gateway/timeout_ms"); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+
+	hist := svc.History("pay/gateway/timeout_ms")
+	if len(hist) != 3 {
+		t.Fatalf("history len = %d, want 3", len(hist))
+	}
+	if hist[0].Action != "create" || hist[0].Before != "" || hist[0].After != "100" || hist[0].Operator != "alice" || hist[0].Version != 1 {
+		t.Fatalf("hist[0] = %+v", hist[0])
+	}
+	if hist[1].Action != "update" || hist[1].Before != "100" || hist[1].After != "200" || hist[1].Version != 2 || hist[1].Operator != "bob" {
+		t.Fatalf("hist[1] = %+v", hist[1])
+	}
+	if hist[2].Action != "delete" || hist[2].Before != "200" || hist[2].After != "" || hist[2].Version != 3 {
+		t.Fatalf("hist[2] = %+v", hist[2])
+	}
+	if _, exists := svc.Get("pay/gateway/timeout_ms"); exists {
+		t.Fatal("config should be deleted")
+	}
+	if h := svc.History("never-existed"); len(h) != 0 {
+		t.Fatalf("history of unknown key = %+v", h)
+	}
+}
+
+// TestServiceHistoryCompare 更新后当前值应与最新历史一致，便于对比排障。
+func TestServiceHistoryCompare(t *testing.T) {
+	svc := NewService()
+	if _, err := svc.Create("cdn/vod/bitrate", "1000", "alice"); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	cfg, _ := svc.Update("cdn/vod/bitrate", "2000", "bob")
+
+	hist := svc.History("cdn/vod/bitrate")
+	last := hist[len(hist)-1]
+	if last.After != cfg.Value || last.Version != cfg.Version {
+		t.Fatalf("last history %+v != current %+v", last, cfg)
+	}
+}

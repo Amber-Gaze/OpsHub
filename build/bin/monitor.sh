@@ -1,13 +1,22 @@
 #!/usr/bin/env bash
 # 简易守护进程：周期检查三个服务进程与健康端口，挂掉即拉起。
-# 工作目录应为 output/bin；配置默认读取 ../conf/ops_hub.yaml。
+# 兼容两种调用形态，统一以 output/ 为运行目录（与 start.sh 一致）。
 set -uo pipefail
 
-ROOT=$(cd "$(dirname "$0")" && pwd)
-cd "$ROOT"
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+if [ -x "$SCRIPT_DIR/opshub-gateway" ]; then
+    RUN_DIR="$(dirname "$SCRIPT_DIR")"
+else
+    ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
+    RUN_DIR="$ROOT/output"
+fi
 
-mkdir -p ../logs
-exec >> ../logs/.monitor.log 2>&1
+BIN_DIR="$RUN_DIR/bin"
+CONF="$RUN_DIR/conf/ops_hub.yaml"
+LOG_DIR="$RUN_DIR/logs"
+
+mkdir -p "$LOG_DIR"
+exec >>"$LOG_DIR/.monitor.log" 2>&1
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 
@@ -17,7 +26,6 @@ declare -A PORTS=(
     [opshub-iam]=8004
     [opshub-config]=8007
 )
-CONF="../conf/ops_hub.yaml"
 CHECK_INTERVAL="${CHECK_INTERVAL:-30}" # 秒
 
 is_running() {
@@ -35,7 +43,7 @@ port_open() {
     fi
 }
 
-log "### Monitor Start (interval=${CHECK_INTERVAL}s) ###"
+log "### Monitor Start (dir=$RUN_DIR interval=${CHECK_INTERVAL}s) ###"
 
 while :; do
     for p in "${!PORTS[@]}"; do
@@ -50,11 +58,11 @@ while :; do
         else
             log "process $p down, restarting"
         fi
-        if [ -x "./$p" ]; then
-            nohup "./$p" -c "$CONF" >>"../logs/$p.stdout" 2>>"../logs/$p.stderr" &
-            log "restarted $p pid=$!"
+        if [ -x "$BIN_DIR/$p" ]; then
+            (cd "$RUN_DIR" && nohup "./bin/$p" -c "$CONF" >>"$LOG_DIR/$p.stdout" 2>>"$LOG_DIR/$p.stderr" & echo $! >"$RUN_DIR/.pid.$p")
+            log "restarted $p pid=$(cat "$RUN_DIR/.pid.$p" 2>/dev/null)"
         else
-            log "binary ./$p not found, skip"
+            log "binary $BIN_DIR/$p not found, skip"
         fi
     done
     sleep "$CHECK_INTERVAL"

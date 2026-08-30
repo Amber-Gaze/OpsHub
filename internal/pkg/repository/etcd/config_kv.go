@@ -86,6 +86,24 @@ func (k *ConfigKV) List(ctx context.Context) (map[string][]byte, error) {
 	return out, nil
 }
 
+// ListSub 列出 prefix+subPrefix 前缀下的全部 KV（不要求 subPrefix 已存在）。
+// 用于按逻辑 key 前缀查询，例如审计历史 auditKV.ListSub(ctx, "pay/gateway/timeout/")。
+func (k *ConfigKV) ListSub(ctx context.Context, subPrefix string) (map[string][]byte, error) {
+	resp, err := k.cli.Get(ctx, k.fullKey(subPrefix), clientv3.WithPrefix())
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string][]byte, len(resp.Kvs))
+	for _, kv := range resp.Kvs {
+		key := strings.TrimPrefix(string(kv.Key), k.prefix)
+		if key == "" {
+			continue
+		}
+		out[key] = kv.Value
+	}
+	return out, nil
+}
+
 // Ping 探测与 etcd 集群的连通性（用于 readiness）。
 func (k *ConfigKV) Ping(ctx context.Context) error {
 	if k == nil || k.cli == nil {

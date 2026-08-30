@@ -49,6 +49,10 @@ build() {
     # 部署脚本 + 生效配置（跳过空/死文件）
     cp build/bin/* output/bin/
     cp build/conf/ops_hub.yaml output/conf/
+    # 运控台前端页面（网关以 output/web 提供）
+    if [ -d web ]; then
+        cp -r web output/web
+    fi
 
     export CGO_ENABLED=0
     export GOFLAGS="-trimpath"

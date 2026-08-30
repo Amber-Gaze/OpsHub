@@ -1,0 +1,57 @@
+# OpsHub 容器化部署配置（放入镜像 /app/conf/ops_hub.yaml）。
+# 与 ops_hub.yaml 的唯一区别：主机名全部用 compose 服务名（mysql/redis/etcd/iam/config），
+# 而非 localhost —— 供容器内跨服务访问。端口与账号保持一致。
+main:
+  shutdown_timeout_seconds: 20
+
+gateway:
+  http_port: 8001
+  grpc_port: 8002   # 预留，暂未启用 gRPC
+  monitoring_port: 8003 # pprof 诊断端口
+  log_file_name: "ops_hub_gateway.log"
+  # 容器内必须指向 IAM / 配置中心的服务名（不能是 127.0.0.1）
+  auth_base_url: "http://iam:8004"
+  config_center_base_url: "http://config:8007"
+
+auth:
+  http_port: 8004
+  grpc_port: 8005   # 预留，暂未启用 gRPC
+  monitoring_port: 8006 # pprof 诊断端口
+  log_file_name: "ops_hub_auth.log"
+
+config_center:
+  http_port: 8007
+  grpc_port: 8008   # 预留，暂未启用 gRPC
+  monitoring_port: 8009 # pprof 诊断端口
+  log_file_name: "ops_hub_config.log"
+
+logger:
+  log_dir: "./logs"
+  log_file_name: "ops_hub.log"
+  rotation: "hour"      # 轮转精度: minute | hour | day
+  max_backups: 30       # 最多保留的历史文件数
+  max_age: 7            # 保留天数
+  log_level: "info"     # debug | info | warn | error
+  encoding: "json"      # json | console
+  compress: false       # 轮转后是否 gzip 压缩
+
+mysql:
+  host: "mysql"         # compose 服务名
+  port: 3306
+  user: "root"
+  password: "liya1234"
+  database: "opshub_db"
+
+# Redis：配置中心 L1 读缓存（etcd 主存 + Redis 混存）与 IAM 登出令牌黑名单。
+redis:
+  host: "redis"         # compose 服务名
+  port: 6379
+  password: "liya1234"
+  db: 0
+  enabled: true
+
+# 配置中心主存储（etcd）
+etcd:
+  endpoints:
+    - "etcd:2379"       # compose 服务名
+  prefix: "/opshub/config"

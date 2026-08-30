@@ -57,8 +57,8 @@ redis:
   db: 0
   enabled: true
 
-# 可选：填写 endpoints 后配置中心将使用 etcd 持久化（需本地或集群 etcd 可达）
-# etcd:
-#   endpoints:
-#     - "127.0.0.1:2379"
-#   prefix: "/opshub/config"
+# 配置中心主存储（etcd）：本地 docker 三件套（docker compose up -d）
+etcd:
+  endpoints:
+    - "127.0.0.1:2379"
+  prefix: "/opshub/config"

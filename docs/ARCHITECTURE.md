@@ -142,9 +142,45 @@ Redis 的另一个用途：**IAM 登出令牌黑名单**（`opshub:iam:blacklist
 | 方法 | 路径 |
 |---|---|
 | GET | `/configs` `/configs/tree` `/configs/tree/{b}` `/configs/tree/{b}/{m}` `/configs/tree/{b}/{m}/{n}` |
+| GET | `/configs/pull[?business=&module=]`（下游服务拉取快照） |
+| GET | `/configs/history/{key}`（历史 + 当前值对比） |
 | POST | `/configs` |
 | PUT | `/configs/{key}` `/configs/tree/{b}/{m}/{n}` |
 | DELETE | `/configs/{key}` `/configs/tree/{b}/{m}/{n}` |
+
+### 配置历史与差异
+- 每次写操作（create/update/delete）都会留一条审计记录，字段含 **`before` / `after`** 两份内容。
+- 后端只负责提供变更前后内容，**差异对比由前端公共库完成**（前端 `web/` 内置行级 LCS diff，
+  如需更强能力可换 jsdiff）。
+- 历史存储：etcd 模式存到 sibling prefix（`<config-prefix>/audit`），跨实例共享；内存模式存进程内。
+
+## 6.5 运控台前端（web/）
+
+- 纯静态 SPA（无构建依赖），由 **网关统一入口** 提供（同源免跨域）：
+  - `GET /` → `index.html`；`GET /static/*` → 静态资源。
+- 三个页面（顶部 Tab 切换）：
+  1. **配置管理**：业务/模块树 → 配置项列表（新增/编辑/删除）→ 历史与差异对比。
+  2. **用户管理**：用户列表 / 新增 / 编辑 / 改密 / 删除 / 查看授权（`/users`、`/signup`、`/users/{name}` 等）。
+  3. **权限管理**：按 业务/模块/项 授权与撤销（`/policies/config-grant|revoke`）、角色绑定、策略列表。
+- 右上角展示「我的权限」（`/scope`）。
+- 启动后访问 `http://127.0.0.1:8001/`（网关端口）。
+- 部署：`build.sh` 会把 `web/` 复制到 `output/web`，网关自动定位并服务。
+- 注意：fasthttp 压缩静态文件会生成 `*.fasthttp.br` 缓存，已加入 `.gitignore`。
+
+## 6.6 下游服务拉取配置（demo）
+
+专门的业务服务通过 `pkg/configclient` 拉取配置：
+
+```
+cli := configclient.New("http://127.0.0.1:8004", "http://127.0.0.1:8007")
+cli.Login(ctx, user, pass)
+items, _ := cli.Pull(ctx)          // GET /configs/pull（自动 authorize 携带 scope）
+kv := configclient.Snapshot(items) // key -> value
+```
+
+- 客户端封装了「登录 IAM → authorize 取 scope → 携带 X-Auth-* 头调用 `/configs/pull`」完整链路。
+- 运行示例：`go run ./examples/config-consumer -user admin -pass '你的密码' -interval 5s`
+  （周期拉取并输出 新增/更新/删除 变化）。
 
 ### 用户 / 策略管理（透传 IAM，IAM 自行 JWT+管理员校验）
 | 方法 | 路径 |
@@ -173,6 +209,9 @@ Redis 的另一个用途：**IAM 登出令牌黑名单**（`opshub:iam:blacklist
 4. **配置中心按权限执行**：读 404 / 写 403 / 集合按 scope 过滤。
 5. **网关统一入口**：用户与策略管理透传 IAM，后续 IAM 新增路由即自动可用。
 6. **Redis 混存**：config-center L1 缓存 + IAM 黑名单。
+7. **配置历史**：每次写操作留审计记录（before/after），`/configs/history/{key}` 查看与对比。
+8. **下游拉取**：`/configs/pull` + `pkg/configclient` + `examples/config-consumer` demo。
+9. **运控台前端**：`web/` 静态 SPA，由网关统一入口服务。
 
 ## 8. 后续扩展建议
 

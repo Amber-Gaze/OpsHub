@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/Amber-Gaze/OpsHub/internal/config_center/domain"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/authutil"
@@ -331,6 +332,73 @@ func (h *Handler) DeleteItem(c *middleware.Context) {
 	}
 	c.SetStatusCode(fasthttp.StatusNoContent)
 	c.SetBody(nil)
+}
+
+// History 返回某个配置 key 的历史变更记录 + 当前值，便于对比排障。
+// 无读权限返回 404；配置已删除时 current 为 null。
+func (h *Handler) History(c *middleware.Context) {
+	if !h.requireAuthDecision(c) {
+		return
+	}
+	raw, _ := c.UserValue("path").(string)
+	key := strings.Trim(strings.TrimSpace(raw), "/")
+	if key == "" {
+		c.Abort(fasthttp.StatusBadRequest, "invalid key")
+		return
+	}
+	if !h.requireRead(c, key) {
+		return
+	}
+
+	current, exists := h.svc.Get(key)
+	var currentPtr *domain.ConfigItem
+	if exists {
+		cp := current
+		currentPtr = &cp
+	}
+	c.JSON(fasthttp.StatusOK, domain.ConfigHistoryResponse{
+		Key:     key,
+		Current: currentPtr,
+		History: h.svc.History(key),
+	})
+}
+
+// Pull 供下游「专门的服务」拉取配置快照（机器消费友好）。
+// 支持按 ?business= / ?module= 过滤；按当前用户 scope 过滤可读项。
+func (h *Handler) Pull(c *middleware.Context) {
+	if !h.requireAuthDecision(c) {
+		return
+	}
+	grants := h.grants(c)
+	if len(grants) == 0 {
+		c.Abort(fasthttp.StatusNotFound, "permission denied")
+		return
+	}
+	business := strings.TrimSpace(string(c.QueryArgs().Peek("business")))
+	module := strings.TrimSpace(string(c.QueryArgs().Peek("module")))
+
+	items := filterReadable(h.svc.List(), grants)
+	filtered := make([]domain.ConfigItem, 0, len(items))
+	for _, it := range items {
+		if business != "" {
+			b, _ := domain.SplitKey(it.Key)
+			if b != business {
+				continue
+			}
+		}
+		if module != "" {
+			_, m := domain.SplitKey(it.Key)
+			if m != module {
+				continue
+			}
+		}
+		filtered = append(filtered, it)
+	}
+
+	c.JSON(fasthttp.StatusOK, domain.PullResponse{
+		Items:       filtered,
+		GeneratedAt: time.Now().UTC(),
+	})
 }
 
 func stringParam(c *middleware.Context, name string) string {

@@ -25,6 +25,10 @@ func RegisterRoutes(r *router.Router, svc *Service, middlewares ...middleware.Mi
 		config.PUT("/tree/{business}/{module}/{name}", handler.UpdateItem)
 		config.DELETE("/tree/{business}/{module}/{name}", handler.DeleteItem)
 
+		// 下游服务拉取 + 历史对比
+		config.GET("/pull", handler.Pull)
+		config.GET("/history/{path:*}", handler.History)
+
 		// 扁平 CRUD（兼容单段 key）
 		config.GET("", handler.List)
 		config.GET("/{key}", handler.Get)

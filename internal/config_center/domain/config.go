@@ -18,6 +18,33 @@ type ConfigItem struct {
 	UpdatedBy string    `json:"updated_by"`
 }
 
+// ConfigChange 一条配置变更记录（审计/历史）。Action 取值：
+// create（新建）/ update（修改）/ delete（删除）。
+// 后端只负责提供变更前后两份内容（Before/After），差异对比由前端公共库完成。
+type ConfigChange struct {
+	Key       string    `json:"key"`
+	Version   int       `json:"version"` // 变更发生时的配置版本（delete 为被删版本的下一序号）
+	Action    string    `json:"action"`
+	Before    string    `json:"before"` // 变更前的值（create 为空）
+	After     string    `json:"after"`  // 变更后的值（delete 为空）
+	Operator  string    `json:"operator"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// ConfigHistoryResponse 配置历史对比响应：当前值 + 全部历史变更。
+// Current 为 null 表示该配置已被删除。
+type ConfigHistoryResponse struct {
+	Key     string         `json:"key"`
+	Current *ConfigItem    `json:"current"`
+	History []ConfigChange `json:"history"`
+}
+
+// PullResponse 下游服务拉取配置的响应（机器消费友好）。
+type PullResponse struct {
+	Items       []ConfigItem `json:"items"`
+	GeneratedAt time.Time    `json:"generated_at"`
+}
+
 // BusinessNode 业务节点：业务 → 模块 → 具体项，对应控制台左侧「业务」层。
 type BusinessNode struct {
 	Business string       `json:"business"`

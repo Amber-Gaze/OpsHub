@@ -26,3 +26,30 @@ The three components collectively accomplish a function that enables real-time u
 - **细粒度权限**：按业务/模块/具体项授权（`/policies/config-grant`），配置中心按 scope 过滤执行
 - **Redis 混存**：etcd 主存储 + Redis L1 读缓存（cache-aside）；IAM 登出令牌黑名单
 - **统一入口**：网关透传用户/策略管理到 IAM，后续接口自动复用
+
+## 快速开始
+
+依赖：Go 1.25+、Docker（Compose v2）。两种部署模式任选其一，**不要同时运行**（端口 8001/8004/8007 会冲突）。
+
+### 模式 A：本地开发（依赖跑容器，服务跑宿主机）
+
+```bash
+make dev          # 一键：起 mysql/redis/etcd → 构建 → 启动三个服务 → 等就绪
+make dev-down     # 停止三个本地服务（依赖容器保留）
+```
+
+### 模式 B：全容器化（依赖 + 三个服务都进容器）
+
+```bash
+make docker-up    # 构建镜像并启动 6 个容器（mysql/redis/etcd + gateway/iam/config）
+make docker-down  # 停止全部容器（保留数据卷）
+```
+
+> 容器内使用 `build/conf/ops_hub.docker.yaml`（host 全为 compose 服务名），
+> 本地使用 `build/conf/ops_hub.yaml`（host 为 localhost）。数据卷共享，切换模式配置不丢。
+
+### 访问与账号
+
+- 控制台：http://127.0.0.1:8001/ （登录页「没有账号？注册」）
+- **首个注册用户自动成为管理员**；之后注册的为普通用户（可被管理员授权）
+- 登录接口：`POST /login`，配置接口均需 `Authorization: Bearer <token>`

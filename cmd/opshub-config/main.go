@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/Amber-Gaze/OpsHub/internal/config_center/api"
@@ -67,6 +68,16 @@ func main() {
 		}
 		svc = api.NewServiceWithEtcd(kv)
 		closeEtcd = kv.Close
+		// 审计历史存到 sibling prefix（如 /opshub/config-audit），与配置本体互不污染。
+		// 必须是配置前缀的 sibling 而非子前缀：若为子前缀（/opshub/config/audit），
+		// ConfigKV.List 的 WithPrefix(配置前缀) 会把审计记录一并列出，导致树/列表重复。
+		auditPrefix := strings.TrimRight(ec.Prefix, "/") + "-audit"
+		if auditKV, err := etcd.NewConfigKV(ec.Endpoints, auditPrefix); err == nil {
+			svc.SetAuditKV(auditKV)
+			logger.Infof("config-center: audit history backend prefix=%q", auditPrefix)
+		} else {
+			logger.Warnf("config-center: audit history disabled: %v", err)
+		}
 		logger.Infof("config-center: etcd backend endpoints=%v prefix=%q", ec.Endpoints, ec.Prefix)
 	} else {
 		svc = api.NewService()

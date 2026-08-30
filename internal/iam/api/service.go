@@ -17,14 +17,18 @@ import (
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/passhash"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/repository/redis"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/store"
+	"github.com/Amber-Gaze/OpsHub/pkg/logger"
 )
 
 var (
-	ErrInvalidUser    = errors.New("invalid user")
-	ErrWeakPassword   = errors.New("password must be at least 8 characters and include letters, digits, and symbols")
-	ErrInvalidToken   = errors.New("invalid token")
-	ErrTokenExpired   = errors.New("token expired")
-	ErrForbidden      = errors.New("forbidden")
+	ErrInvalidUser  = errors.New("invalid user")
+	ErrWeakPassword = errors.New("password must be at least 8 characters and include letters, digits, and symbols")
+	ErrInvalidToken = errors.New("invalid token")
+	ErrTokenExpired = errors.New("token expired")
+	ErrForbidden    = errors.New("forbidden")
+	// ErrReadForbidden 表示读访问被拒绝：按需求对外返回 404（不暴露资源是否存在），
+	// 与写/删无权限（ErrForbidden → 403）区分。
+	ErrReadForbidden  = errors.New("read not permitted")
 	ErrCasbinDisabled = errors.New("casbin not initialized")
 	defaultTokenTTL   = time.Hour
 )
@@ -127,20 +131,39 @@ func (s *Service) Signup(c *middleware.Context, req signupRequest) error {
 		return err
 	}
 
+	// 首个注册用户自动成为管理员（本地部署/教学便捷；已有用户后不再生效）。
+	// 生产环境请改用 bootstrap_admin 配置或关闭该逻辑。
+	firstUser, err := s.isFirstUser(c)
+	if err != nil {
+		return err
+	}
+
 	newUser := &store.User{
 		Username: subject,
 		Password: hashed,
 		Email:    req.Email,
 		Phone:    req.Phone,
-		IsAdmin:  false,
+		IsAdmin:  firstUser,
 		Status:   1,
 	}
 
 	if err := store.Client().Users().Create(c, newUser); err != nil {
 		return err
 	}
+	if firstUser {
+		logger.Infof("iam: first user %q registered as admin", subject)
+	}
 
 	return nil
+}
+
+// isFirstUser 判断当前是否还没有任何用户（首个注册用户自动成为管理员）。
+func (s *Service) isFirstUser(ctx context.Context) (bool, error) {
+	list, err := store.Client().Users().List(ctx)
+	if err != nil {
+		return false, err
+	}
+	return len(list) == 0, nil
 }
 
 // validatePassword enforces basic strength requirements for new accounts.
@@ -313,10 +336,12 @@ func (s *Service) Authorize(token, resource, action string) (*middleware.AuthDec
 	}
 
 	allow := false
+	act := "" // normalize 后的动作（read/write/delete），供下方无权限分支区分读/写
 	if userInfo.IsAdmin {
 		allow = true
 	} else if casbinx.IsConfigResourcePath(resource) {
-		obj, act := casbinx.NormalizeConfigResource(resource, action)
+		var obj string
+		obj, act = casbinx.NormalizeConfigResource(resource, action)
 		if isConfigWriteAction(act) {
 			// 写/删：精确校验目标资源
 			if s.enf != nil {
@@ -326,7 +351,8 @@ func (s *Service) Authorize(token, resource, action string) (*middleware.AuthDec
 				}
 			}
 		} else {
-			// 读：拥有任意配置授权即可进入，由配置中心按 scope 过滤
+			// 读：拥有任意配置授权即可进入，由配置中心按 scope 过滤；
+			// 一个授权都没有时按需求对外返回 404（读无权限，不暴露资源存在）。
 			grants, gerr := s.collectGrants(subject)
 			if gerr != nil {
 				return nil, gerr
@@ -336,6 +362,11 @@ func (s *Service) Authorize(token, resource, action string) (*middleware.AuthDec
 	}
 
 	if !allow {
+		// 注意用 normalize 后的 act（read/write/delete，由 mapHTTPMethod 统一），
+		// 而非原始 action（网关传的是大写 HTTP 方法 GET/POST/PUT/DELETE）。
+		if isConfigReadAction(act) {
+			return nil, ErrReadForbidden
+		}
 		return nil, ErrForbidden
 	}
 
@@ -359,6 +390,10 @@ func (s *Service) Authorize(token, resource, action string) (*middleware.AuthDec
 
 func isConfigWriteAction(act string) bool {
 	return act == "write" || act == "delete"
+}
+
+func isConfigReadAction(act string) bool {
+	return act == "read" || act == "get" || act == "list"
 }
 
 func (s *Service) parseToken(token string) (string, time.Time, error) {

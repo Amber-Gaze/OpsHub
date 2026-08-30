@@ -25,12 +25,18 @@ func RegisterRoutes(r *router.Router, svc *Service, cfg RoutesConfig) {
 	group.POST("/login", handler.Login)
 	group.POST("/logout", handler.Logout)
 	group.POST("/refresh", handler.Refresh)
+	group.POST("/scope", handler.Scope)
+	group.POST("/signup", handler.Signup) // 公开注册（IAM 侧首个用户自动成为管理员）
 
 	group.Use(middleware.JWTAuthMiddleware())
 
 	// 配置中心：经 RequireAuthDecision（IAM scope）鉴权后透传，配置中心按 scope 精确过滤/校验。
 	configs := group.Group(utils.ConfigPath, RequireAuthDecision(svc))
 	{
+		// 下游服务拉取 + 历史对比透传
+		configs.GET("/pull", handler.PullConfigs)
+		configs.GET("/history/{path:*}", handler.GetConfigHistory)
+
 		// 控制台分层浏览透传：/configs/tree[/business[/module[/name]]]
 		configs.GET("/tree", handler.GetTree)
 		configs.GET("/tree/{business}", handler.GetBusiness)

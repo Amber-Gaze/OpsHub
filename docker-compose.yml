@@ -1,55 +1,77 @@
-version: '3.8'
+# OpsHub 本地依赖三件套：MySQL + Redis + etcd
+# 用法：docker compose up -d        （在 OpsHub 目录下执行）
+#       docker compose down         （停止并保留数据卷）
+#       docker compose down -v      （停止并删除数据卷）
+# 三个服务的端口 / 账号与 build/conf/ops_hub.yaml 对齐：
+#   MySQL :3306  root/liya1234 / 库 opshub_db
+#   Redis :6379  密码 liya1234
+#   etcd  :2379  无鉴权（本地单机）
+# OpsHub 服务本体在宿主机本地部署（make build && make run），这里只起依赖。
 
 services:
-  etcd:
-    image: bitnami/etcd:3.5
-    environment:
-      - ETCD_ENABLE_V2=true
-      - ETCD_ADVERTISE_CLIENT_URLS=http://etcd:2379
-      - ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379
-      - ETCD_INITIAL_CLUSTER_TOKEN=etcd-cluster-1
-      - ETCD_INITIAL_CLUSTER_STATE=new
-      - ETCD_DATA_DIR=/bitnami/etcd/data
-    ports:
-      - "2379:2379"
-    volumes:
-      - etcd-data:/bitnami/etcd/data
-
-  redis:
-    image: redis:7-alpine
-    command: redis-server --requirepass yourpassword
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis-data:/data
-
   mysql:
     image: mysql:8.0
+    container_name: opshub-mysql
+    restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: yourpassword
-      MYSQL_DATABASE: config_center
-      MYSQL_USER: config_user
-      MYSQL_PASSWORD: yourpassword
+      MYSQL_ROOT_PASSWORD: "liya1234"
+      MYSQL_DATABASE: "opshub_db"
+      TZ: "Asia/Shanghai"
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     ports:
       - "3306:3306"
     volumes:
       - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-pliya1234"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
-  github.com/Amber-Gaze/OpsHub:
-    build: .
-    depends_on:
-      - etcd
-      - redis
-      - mysql
+  redis:
+    image: redis:7-alpine
+    container_name: opshub-redis
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "liya1234", "--appendonly", "yes"]
     ports:
-      - "8080:8080"
-    environment:
-      - ETCD_ENDPOINTS=http://etcd:2379
-      - REDIS_ADDR=redis:6379
-      - REDIS_PASSWORD=yourpassword
-      - MYSQL_DSN=root:yourpassword@tcp(mysql:3306)/config_center?charset=utf8mb4&parseTime=True&loc=Local
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "liya1234", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  etcd:
+    # 官方镜像（走 quay.io，不受 docker.io 加速源影响）
+    image: quay.io/coreos/etcd:v3.5.17
+    container_name: opshub-etcd
+    restart: unless-stopped
+    command:
+      - /usr/local/bin/etcd
+      # 成员名必须与 --initial-cluster 中的名字一致（这里统一用 etcd）
+      - --name=etcd
+      - --data-dir=/etcd-data
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://127.0.0.1:2379
+      - --listen-peer-urls=http://0.0.0.0:2380
+      - --initial-advertise-peer-urls=http://etcd:2380
+      - --initial-cluster=etcd=http://etcd:2380
+      - --initial-cluster-state=new
+      - --initial-cluster-token=opshub-etcd-token
+    ports:
+      - "2379:2379"
+      - "2380:2380"
+    volumes:
+      - etcd-data:/etcd-data
+    healthcheck:
+      test: ["CMD", "etcdctl", "--endpoints=http://127.0.0.1:2379", "endpoint", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
 volumes:
   etcd-data:
-  redis-data:
   mysql-data:
+  redis-data:

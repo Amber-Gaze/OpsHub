@@ -64,6 +64,11 @@ func main() {
 		logger.Errorf("iam: get gorm db: %v", err)
 		Exit(1)
 	}
+	// 自动建表：user（casbin_rule 由 gorm-adapter 自动创建）
+	if err := gdb.AutoMigrate(&store.User{}); err != nil {
+		logger.Errorf("iam: migrate user table: %v", err)
+		Exit(1)
+	}
 	enf, err := casbinx.NewSyncedEnforcer(gdb)
 	if err != nil {
 		logger.Errorf("iam: casbin init: %v", err)

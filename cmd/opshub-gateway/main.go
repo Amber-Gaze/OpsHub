@@ -4,6 +4,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Amber-Gaze/OpsHub/internal/gateway/api"
@@ -13,6 +16,7 @@ import (
 	"github.com/Amber-Gaze/OpsHub/pkg/logger"
 	"github.com/Amber-Gaze/OpsHub/pkg/observability"
 	"github.com/fasthttp/router"
+	"github.com/valyala/fasthttp"
 )
 
 func Exit(code int) {
@@ -64,6 +68,11 @@ func main() {
 		RateLimitRPS: defaultRateLimitRPS,
 	})
 
+	// 运控台前端静态页面（可选）：以网关为统一入口，同源访问避免跨域
+	if serveWeb(r) {
+		logger.Infof("gateway: serving web console (open http://127.0.0.1:%d/)", options.GetGatewayHTTPPort())
+	}
+
 	addr := fmt.Sprintf(":%d", options.GetGatewayHTTPPort())
 	logger.Infof("gateway: fasthttp listening on %s (auth=%s config=%s)", addr, authBaseURL, configCenterBaseURL)
 	err = graceful.RunServer(addr, r.Handler, options.GetShutdownTimeout(), nil)
@@ -73,4 +82,44 @@ func main() {
 	}
 	logger.Infof("gateway: graceful shutdown done")
 	Exit(0)
+}
+
+// serveWeb 注册运控台前端页面路由（/ 返回 index.html，/static/* 返回静态资源）。
+func serveWeb(r *router.Router) bool {
+	webDir, ok := resolveWebDir()
+	if !ok {
+		return false
+	}
+	index := filepath.Join(webDir, "index.html")
+
+	r.GET("/", func(ctx *fasthttp.RequestCtx) {
+		ctx.SendFile(index)
+	})
+	r.GET("/static/{filepath:*}", func(ctx *fasthttp.RequestCtx) {
+		p := strings.TrimPrefix(string(ctx.Path()), "/static/")
+		p = path.Clean("/" + p)[1:]
+		if p == "" || strings.Contains(p, "..") {
+			ctx.Error("not found", fasthttp.StatusNotFound)
+			return
+		}
+		ctx.SendFile(filepath.Join(webDir, "static", p))
+	})
+	return true
+}
+
+// resolveWebDir 定位前端目录：优先当前工作目录 ./web（开发态），
+// 其次可执行文件上级的 web（部署态：output/bin 下的二进制 → output/web）。
+func resolveWebDir() (string, bool) {
+	if p, err := filepath.Abs("web"); err == nil {
+		if st, err := os.Stat(filepath.Join(p, "index.html")); err == nil && !st.IsDir() {
+			return p, true
+		}
+	}
+	if exe, err := os.Executable(); err == nil {
+		p := filepath.Join(filepath.Dir(exe), "..", "web")
+		if st, err := os.Stat(filepath.Join(p, "index.html")); err == nil && !st.IsDir() {
+			return p, true
+		}
+	}
+	return "", false
 }

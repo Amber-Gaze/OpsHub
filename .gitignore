@@ -8,4 +8,4 @@
 *.cache
 *.bak
 *.swp
-cover.out
+cover.out*.fasthttp.*

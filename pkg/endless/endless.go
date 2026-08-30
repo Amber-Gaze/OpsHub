@@ -248,7 +248,9 @@ func (srv *endlessServer) ListenAndServeTLS(certFile, keyFile string) (err error
 
 	config := &tls.Config{}
 	if srv.TLSConfig != nil {
-		*config = *srv.TLSConfig
+		// 用 Clone 深拷贝：直接结构体拷贝会把 tls.Config 内部的 sync.RWMutex 一起复制
+		// （vet copylocks），Clone 会重置互斥锁且保留全部配置字段。
+		config = srv.TLSConfig.Clone()
 	}
 	if config.NextProtos == nil {
 		config.NextProtos = []string{"http/1.1"}

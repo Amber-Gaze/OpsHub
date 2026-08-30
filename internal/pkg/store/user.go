@@ -8,10 +8,10 @@ import (
 
 type User struct {
 	ID        int64  `gorm:"column:id;primaryKey;AUTO_INCREMENT"`
-	Username  string `gorm:"column:username;uniqueIndex;not null"`
-	Password  string `gorm:"column:password;not null"`
-	Email     string `gorm:"column:email;not null"`
-	Phone     string `gorm:"column:phone"`
+	Username  string `gorm:"column:username;size:128;uniqueIndex;not null"`
+	Password  string `gorm:"column:password;size:255;not null"`
+	Email     string `gorm:"column:email;size:128;not null"`
+	Phone     string `gorm:"column:phone;size:32"`
 	IsAdmin   bool   `gorm:"column:is_admin;default:false"`
 	Status    int    `gorm:"column:status;default:1"`
 	LoginedAt int64  `gorm:"column:logined_at"`

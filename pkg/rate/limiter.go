@@ -2,6 +2,7 @@ package rate
 
 import (
 	"sync"
+	"time"
 
 	"go.uber.org/ratelimit"
 )
@@ -29,14 +30,21 @@ func GetLimiter(key string, rps int) *RateLimiter {
 		return l
 	}
 
-	l := &RateLimiter{
-		rl: ratelimit.New(rps),
+	var lim ratelimit.Limiter
+	if rps <= 0 {
+		// rps<=0 视为不限流；ratelimit.New(0) 会除零 panic
+		lim = ratelimit.NewUnlimited()
+	} else {
+		lim = ratelimit.New(rps)
 	}
+	l := &RateLimiter{rl: lim}
 	limiterMap[key] = l
 	return l
 }
 
 func Allow(key string, rps int) bool {
+	// go.uber.org/ratelimit v0.3.1 的 Take() 返回「下一次允许执行的时间点 time.Time」：
+	// 时间点在当前之前（含）→ 立即放行；在未来 → 应休眠到该时刻（被限流）。
 	limiter := GetLimiter(key, rps)
-	return limiter.rl.Take().IsZero()
+	return !limiter.rl.Take().After(time.Now())
 }

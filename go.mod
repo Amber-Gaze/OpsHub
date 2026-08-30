@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/casbin/casbin/v2 v2.135.0
-	github.com/casbin/gorm-adapter/v3 v3.41.0
+	github.com/casbin/gorm-adapter/v3 v3.38.0
 	github.com/fasthttp/router v1.5.4
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/json-iterator/go v1.1.12
@@ -26,7 +26,6 @@ require (
 	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/benbjohnson/clock v1.3.0 // indirect
 	github.com/bmatcuk/doublestar/v4 v4.9.1 // indirect
-	github.com/casbin/casbin/v3 v3.8.1 // indirect
 	github.com/casbin/govaluate v1.10.0 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/coreos/go-semver v0.3.0 // indirect

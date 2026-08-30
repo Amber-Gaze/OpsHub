@@ -31,13 +31,16 @@ func cacheKeyItem(key string) string {
 type Service struct {
 	mu      sync.RWMutex
 	configs map[string]domain.ConfigItem
+	history map[string][]domain.ConfigChange
 	etcdKV  *etcd.ConfigKV
+	auditKV *etcd.ConfigKV // 审计历史（etcd 模式，sibling prefix，多实例共享）
 	cache   *redis.Cache
 }
 
 func NewService() *Service {
 	return &Service{
 		configs: make(map[string]domain.ConfigItem),
+		history: make(map[string][]domain.ConfigChange),
 	}
 }
 
@@ -46,6 +49,66 @@ func NewService() *Service {
 func (s *Service) SetRedisCache(c *redis.Cache) *Service {
 	s.cache = c
 	return s
+}
+
+// SetAuditKV 附加审计存储（etcd 模式，前缀与配置存储互为 sibling，互不污染）。
+// 未设置时审计历史保存在进程内存（仅单实例可见）。
+func (s *Service) SetAuditKV(kv *etcd.ConfigKV) *Service {
+	s.auditKV = kv
+	return s
+}
+
+// recordChange 记录一条配置变更。etcd 模式下持久化到 auditKV（跨实例共享）；
+// 内存模式下直接追加到进程内 history —— 调用方（Create/Update/Delete 的内存分支）
+// 必须已持有 s.mu，避免与 Create 等持有的锁重入死锁（sync.RWMutex 不可重入）。
+func (s *Service) recordChange(ch domain.ConfigChange) {
+	if s.auditKV != nil {
+		payload, err := json.Marshal(ch)
+		if err != nil {
+			return
+		}
+		// 用创建时间纳秒做追加键，保证同一 key 的多次变更不冲突
+		auditKey := fmt.Sprintf("%s/%d", ch.Key, ch.CreatedAt.UnixNano())
+		ctx, cancel := s.etcdCtx()
+		defer cancel()
+		_ = s.auditKV.Put(ctx, auditKey, payload)
+		return
+	}
+	// 内存模式：调用方已持有 s.mu，直接追加（不加锁）
+	s.history[ch.Key] = append(s.history[ch.Key], ch)
+}
+
+// History 返回某个配置 key 的全部变更记录（按时间升序）。
+func (s *Service) History(key string) []domain.ConfigChange {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return nil
+	}
+	if s.auditKV != nil {
+		ctx, cancel := s.etcdCtx()
+		defer cancel()
+		raw, err := s.auditKV.ListSub(ctx, key+"/")
+		if err != nil {
+			return nil
+		}
+		changes := make([]domain.ConfigChange, 0, len(raw))
+		for _, b := range raw {
+			var ch domain.ConfigChange
+			if json.Unmarshal(b, &ch) != nil {
+				continue
+			}
+			changes = append(changes, ch)
+		}
+		sort.Slice(changes, func(i, j int) bool { return changes[i].CreatedAt.Before(changes[j].CreatedAt) })
+		return changes
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	hist := s.history[key]
+	out := make([]domain.ConfigChange, len(hist))
+	copy(out, hist)
+	return out
 }
 
 // NewServiceWithEtcd 使用 etcd 持久化配置；未配置 endpoints 时请使用 NewService()。
@@ -205,6 +268,7 @@ func (s *Service) Create(key, value, operator string) (domain.ConfigItem, error)
 			return domain.ConfigItem{}, fmt.Errorf("etcd put: %w", err)
 		}
 		s.invalidateCache(key)
+		s.recordChange(newChange(key, cfg.Version, "create", "", cfg.Value, operator))
 		return cfg, nil
 	}
 
@@ -218,6 +282,7 @@ func (s *Service) Create(key, value, operator string) (domain.ConfigItem, error)
 	cfg := newConfigItem(key, value, operator, 1)
 	s.configs[key] = cfg
 	s.invalidateCache(key)
+	s.recordChange(newChange(key, cfg.Version, "create", "", cfg.Value, operator))
 	return cfg, nil
 }
 
@@ -240,6 +305,7 @@ func (s *Service) Update(key, value, operator string) (domain.ConfigItem, error)
 		if err := json.Unmarshal(b, &cfg); err != nil {
 			return domain.ConfigItem{}, err
 		}
+		oldValue := cfg.Value
 		cfg.Value = value
 		cfg.Version++
 		cfg.UpdatedAt = time.Now().UTC()
@@ -252,6 +318,7 @@ func (s *Service) Update(key, value, operator string) (domain.ConfigItem, error)
 			return domain.ConfigItem{}, fmt.Errorf("etcd put: %w", err)
 		}
 		s.invalidateCache(key)
+		s.recordChange(newChange(key, cfg.Version, "update", oldValue, value, operator))
 		return cfg, nil
 	}
 
@@ -263,23 +330,34 @@ func (s *Service) Update(key, value, operator string) (domain.ConfigItem, error)
 		return domain.ConfigItem{}, ErrConfigNotFound
 	}
 
+	oldValue := cfg.Value
 	cfg.Value = value
 	cfg.Version++
 	cfg.UpdatedAt = time.Now().UTC()
 	cfg.UpdatedBy = fallbackOperator(operator)
 	s.configs[key] = cfg
 	s.invalidateCache(key)
+	s.recordChange(newChange(key, cfg.Version, "update", oldValue, value, operator))
 	return cfg, nil
 }
 
 func (s *Service) Delete(key string) error {
-	if key == "" {
-		return errors.New("key is required")
+	if err := domain.ValidateKey(key); err != nil {
+		return err
 	}
 
 	if s.etcdKV != nil {
 		ctx, cancel := s.etcdCtx()
 		defer cancel()
+		// 先读取被删配置的版本与值，用于审计记录
+		deletedVersion, deletedValue := 0, ""
+		if b, err := s.etcdKV.Get(ctx, key); err == nil && len(b) > 0 {
+			var cfg domain.ConfigItem
+			if json.Unmarshal(b, &cfg) == nil {
+				deletedVersion = cfg.Version
+				deletedValue = cfg.Value
+			}
+		}
 		ok, err := s.etcdKV.Delete(ctx, key)
 		if err != nil {
 			return fmt.Errorf("etcd delete: %w", err)
@@ -288,17 +366,20 @@ func (s *Service) Delete(key string) error {
 			return ErrConfigNotFound
 		}
 		s.invalidateCache(key)
+		s.recordChange(newChange(key, deletedVersion+1, "delete", deletedValue, "", ""))
 		return nil
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if _, exists := s.configs[key]; !exists {
+	cfg, exists := s.configs[key]
+	if !exists {
 		return ErrConfigNotFound
 	}
 	delete(s.configs, key)
 	s.invalidateCache(key)
+	s.recordChange(newChange(key, cfg.Version+1, "delete", cfg.Value, "", cfg.UpdatedBy))
 	return nil
 }
 
@@ -354,6 +435,18 @@ func newConfigItem(key, value, operator string, version int) domain.ConfigItem {
 		Version:   version,
 		UpdatedAt: time.Now().UTC(),
 		UpdatedBy: fallbackOperator(operator),
+	}
+}
+
+func newChange(key string, version int, action, before, after, operator string) domain.ConfigChange {
+	return domain.ConfigChange{
+		Key:       key,
+		Version:   version,
+		Action:    action,
+		Before:    before,
+		After:     after,
+		Operator:  fallbackOperator(operator),
+		CreatedAt: time.Now().UTC(),
 	}
 }
 
