@@ -2,6 +2,8 @@ package api
 
 import (
 	"encoding/json"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -363,8 +365,20 @@ func (h *Handler) History(c *middleware.Context) {
 	})
 }
 
-// Pull 供下游「专门的服务」拉取配置快照（机器消费友好）。
-// 支持按 ?business= / ?module= 过滤；按当前用户 scope 过滤可读项。
+// Pull 供下游「专门的服务」拉取配置（机器消费友好），支持不同层级与增量拉取：
+//
+//	过滤（可组合，精确到任意层级）：
+//	  business=pay                          → 业务 pay/**
+//	  business=pay&module=gateway           → pay 的 gateway 模块
+//	  business=pay&module=gateway&name=xxx  → pay/gateway/xxx 精确一项
+//	  path=pay/gateway                      → key 为 pay/gateway 或以 pay/gateway/ 开头
+//	  key=pay/gateway/timeout_ms            → 精确一个 key
+//
+//	增量判断更新：
+//	  since=<rev>                           → 只返回全局版本号 > since 的变更项 + 被删 key(removed)，
+//	                                           响应携带最新 revision；下游据此增量更新即可，无需全量拉取。
+//
+//	所有结果按当前用户 scope 过滤可读项；无读权限返回 404。
 func (h *Handler) Pull(c *middleware.Context) {
 	if !h.requireAuthDecision(c) {
 		return
@@ -374,31 +388,87 @@ func (h *Handler) Pull(c *middleware.Context) {
 		c.Abort(fasthttp.StatusNotFound, "permission denied")
 		return
 	}
-	business := strings.TrimSpace(string(c.QueryArgs().Peek("business")))
-	module := strings.TrimSpace(string(c.QueryArgs().Peek("module")))
 
-	items := filterReadable(h.svc.List(), grants)
-	filtered := make([]domain.ConfigItem, 0, len(items))
-	for _, it := range items {
-		if business != "" {
-			b, _ := domain.SplitKey(it.Key)
-			if b != business {
-				continue
-			}
-		}
-		if module != "" {
-			_, m := domain.SplitKey(it.Key)
-			if m != module {
-				continue
-			}
-		}
-		filtered = append(filtered, it)
+	q := c.QueryArgs()
+	business := strings.TrimSpace(string(q.Peek("business")))
+	module := strings.TrimSpace(string(q.Peek("module")))
+	name := strings.TrimSpace(string(q.Peek("name")))
+	path := strings.TrimSpace(string(q.Peek("path")))
+	key := strings.TrimSpace(string(q.Peek("key")))
+	sinceStr := strings.TrimSpace(string(q.Peek("since")))
+
+	if name != "" && (business == "" || module == "") {
+		c.Abort(fasthttp.StatusBadRequest, "name requires business and module")
+		return
+	}
+	var since int64
+	if sinceStr != "" {
+		since, _ = strconv.ParseInt(sinceStr, 10, 64)
 	}
 
+	match := pullKeyMatcher(business, module, name, path, key)
+	readable := func(k string) bool { return casbinx.CanRead(grants, k) }
+
+	items := make([]domain.ConfigItem, 0)
+	removed := make([]string, 0)
+
+	if since > 0 {
+		// 增量：自 since 以来的变更项 + 被删 key
+		for k, ch := range h.svc.ChangesSince(since) {
+			if !match(k) || !readable(k) {
+				continue
+			}
+			if ch.Action == "delete" {
+				removed = append(removed, k)
+				continue
+			}
+			if it, ok := h.svc.Get(k); ok {
+				items = append(items, it)
+			}
+		}
+		sort.Strings(removed)
+	} else {
+		// 全量：当前所有可读项（按过滤条件）
+		for _, it := range filterReadable(h.svc.List(), grants) {
+			if match(it.Key) {
+				items = append(items, it)
+			}
+		}
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].Key < items[j].Key })
+
 	c.JSON(fasthttp.StatusOK, domain.PullResponse{
-		Items:       filtered,
+		Revision:    h.svc.Revision(c),
+		Items:       items,
+		Removed:     removed,
 		GeneratedAt: time.Now().UTC(),
 	})
+}
+
+// pullKeyMatcher 依据过滤参数构造 key 匹配谓词。
+func pullKeyMatcher(business, module, name, path, key string) func(string) bool {
+	switch {
+	case key != "":
+		k := strings.Trim(strings.TrimSpace(key), "/")
+		return func(s string) bool { return s == k }
+	case path != "":
+		p := strings.Trim(strings.TrimSpace(path), "/")
+		return func(s string) bool { return s == p || strings.HasPrefix(s, p+"/") }
+	default:
+		return func(s string) bool {
+			b, m := domain.SplitKey(s)
+			if business != "" && b != business {
+				return false
+			}
+			if module != "" && m != module {
+				return false
+			}
+			if name != "" && domain.ItemName(s) != name {
+				return false
+			}
+			return true
+		}
+	}
 }
 
 func stringParam(c *middleware.Context, name string) string {

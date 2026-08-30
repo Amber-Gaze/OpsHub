@@ -21,9 +21,11 @@ type ConfigItem struct {
 // ConfigChange 一条配置变更记录（审计/历史）。Action 取值：
 // create（新建）/ update（修改）/ delete（删除）。
 // 后端只负责提供变更前后两份内容（Before/After），差异对比由前端公共库完成。
+// Revision 为该变更发生时的全局配置版本号（供下游增量拉取判断更新）。
 type ConfigChange struct {
 	Key       string    `json:"key"`
-	Version   int       `json:"version"` // 变更发生时的配置版本（delete 为被删版本的下一序号）
+	Version   int       `json:"version"`  // 变更发生时的配置版本（delete 为被删版本的下一序号）
+	Revision  int64     `json:"revision"` // 全局配置版本号（每次写操作 +1，单调递增）
 	Action    string    `json:"action"`
 	Before    string    `json:"before"` // 变更前的值（create 为空）
 	After     string    `json:"after"`  // 变更后的值（delete 为空）
@@ -40,8 +42,12 @@ type ConfigHistoryResponse struct {
 }
 
 // PullResponse 下游服务拉取配置的响应（机器消费友好）。
+// Revision 为本次拉取时的全局配置版本号；增量拉取（?since=）时 Items 只含变更项、
+// Removed 为区间内被删除的 key 列表，下游据此增量更新即可。
 type PullResponse struct {
+	Revision    int64        `json:"revision"`
 	Items       []ConfigItem `json:"items"`
+	Removed     []string     `json:"removed,omitempty"`
 	GeneratedAt time.Time    `json:"generated_at"`
 }
 

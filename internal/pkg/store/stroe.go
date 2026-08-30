@@ -6,6 +6,8 @@ var client Factory
 
 type Factory interface {
 	Users() UserStore
+	AccessKeys() AccessKeyStore
+	ServiceModules() ServiceModuleStore
 	Ping(ctx context.Context) error
 }
 

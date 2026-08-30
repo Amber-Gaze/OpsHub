@@ -19,6 +19,10 @@ The three components collectively accomplish a function that enables real-time u
   - 三模块职责与端口、请求/鉴权链路、配置「业务-模块-列表」分层模型
   - 权限模型（scope：`config/pay/**` 等）、Redis 混存（etcd 主存 + Redis L1 缓存）方案
   - 接口清单与错误语义（读无权限 404、写无权限 403）
+- **外部接入指南（对接公司 IAM / 下游业务接入）**：[docs/EXTERNAL_IAM_INTEGRATION.md](docs/EXTERNAL_IAM_INTEGRATION.md)
+  - 对外稳定协议（JWT / scope / HMAC 签名 / X-Auth-* 头）、接口清单与 curl 示例
+  - 下游服务拉取配置（pkg/configclient + demo）
+  - 替换为公司自有 IAM 的 `GrantEngine` / `UserStore` 对接说明与代码骨架
 
 ## 特性
 

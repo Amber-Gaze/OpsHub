@@ -3,6 +3,7 @@ package etcd
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -115,4 +116,39 @@ func (k *ConfigKV) Ping(ctx context.Context) error {
 	}
 	_, err := k.cli.Status(ctx, eps[0])
 	return err
+}
+
+// Incr 原子递增 logicalKey 下的整数并返回新值（不存在则初始化为 1）。
+// 用 etcd 事务 CAS 保证并发安全，用于全局配置版本号等场景。
+func (k *ConfigKV) Incr(ctx context.Context, logicalKey string) (int64, error) {
+	full := k.fullKey(logicalKey)
+	for {
+		resp, err := k.cli.Get(ctx, full)
+		if err != nil {
+			return 0, err
+		}
+		cur := int64(0)
+		if len(resp.Kvs) > 0 {
+			cur, _ = strconv.ParseInt(string(resp.Kvs[0].Value), 10, 64)
+		}
+		next := cur + 1
+
+		var cmp clientv3.Cmp
+		if len(resp.Kvs) > 0 {
+			cmp = clientv3.Compare(clientv3.Value(full), "=", string(resp.Kvs[0].Value))
+		} else {
+			cmp = clientv3.Compare(clientv3.CreateRevision(full), "=", 0)
+		}
+		txnResp, err := k.cli.Txn(ctx).
+			If(cmp).
+			Then(clientv3.OpPut(full, strconv.FormatInt(next, 10))).
+			Commit()
+		if err != nil {
+			return 0, err
+		}
+		if txnResp.Succeeded {
+			return next, nil
+		}
+		// 其他写入者抢先了，重试
+	}
 }

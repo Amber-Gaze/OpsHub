@@ -213,7 +213,7 @@ func userToResponse(u *store.User) userResponse {
 
 func (h *Handler) ListUsers(c *middleware.Context) {
 	ctx := context.Background()
-	list, err := store.Client().Users().List(ctx)
+	list, err := h.svc.UserStore().List(ctx)
 	if err != nil {
 		c.Abort(fasthttp.StatusInternalServerError, err.Error())
 		return
@@ -233,7 +233,7 @@ func (h *Handler) GetUser(c *middleware.Context) {
 		return
 	}
 	ctx := context.Background()
-	u, err := store.Client().Users().Get(ctx, name)
+	u, err := h.svc.UserStore().Get(ctx, name)
 	if err != nil {
 		c.Abort(fasthttp.StatusNotFound, "user not found")
 		return
@@ -315,7 +315,7 @@ func (h *Handler) ChangePassword(c *middleware.Context) {
 		return
 	}
 	ctx := context.Background()
-	u, err := store.Client().Users().Get(ctx, name)
+	u, err := h.svc.UserStore().Get(ctx, name)
 	if err != nil {
 		c.Abort(fasthttp.StatusNotFound, "user not found")
 		return
@@ -336,7 +336,7 @@ func (h *Handler) ChangePassword(c *middleware.Context) {
 		return
 	}
 	u.Password = hashed
-	if err := store.Client().Users().Update(ctx, u); err != nil {
+	if err := h.svc.UserStore().Update(ctx, u); err != nil {
 		c.Abort(fasthttp.StatusInternalServerError, err.Error())
 		return
 	}
@@ -369,7 +369,7 @@ func (h *Handler) UpdateUser(c *middleware.Context) {
 		}
 	}
 	ctx := context.Background()
-	u, err := store.Client().Users().Get(ctx, name)
+	u, err := h.svc.UserStore().Get(ctx, name)
 	if err != nil {
 		c.Abort(fasthttp.StatusNotFound, "user not found")
 		return
@@ -386,7 +386,7 @@ func (h *Handler) UpdateUser(c *middleware.Context) {
 	if req.Status != nil {
 		u.Status = *req.Status
 	}
-	if err := store.Client().Users().Update(ctx, u); err != nil {
+	if err := h.svc.UserStore().Update(ctx, u); err != nil {
 		c.Abort(fasthttp.StatusInternalServerError, err.Error())
 		return
 	}
@@ -405,7 +405,7 @@ func (h *Handler) DeleteUser(c *middleware.Context) {
 		return
 	}
 	ctx := context.Background()
-	if err := store.Client().Users().Delete(ctx, name); err != nil {
+	if err := h.svc.UserStore().Delete(ctx, name); err != nil {
 		c.Abort(fasthttp.StatusInternalServerError, err.Error())
 		return
 	}
@@ -427,7 +427,7 @@ func (h *Handler) DeleteUsers(c *middleware.Context) {
 	for _, name := range req.Usernames {
 		name = strings.TrimSpace(name)
 		if name != "" {
-			_ = store.Client().Users().Delete(ctx, name)
+			_ = h.svc.UserStore().Delete(ctx, name)
 		}
 	}
 	c.SetStatusCode(fasthttp.StatusNoContent)

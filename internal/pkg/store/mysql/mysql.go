@@ -20,6 +20,14 @@ func (ds *datastore) Users() store.UserStore {
 	return newUsers(ds)
 }
 
+func (ds *datastore) AccessKeys() store.AccessKeyStore {
+	return newAccessKeys(ds)
+}
+
+func (ds *datastore) ServiceModules() store.ServiceModuleStore {
+	return newServiceModules(ds)
+}
+
 func (ds *datastore) Close() error {
 	db, err := ds.db.DB()
 	if err != nil {

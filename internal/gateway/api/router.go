@@ -76,5 +76,21 @@ func RegisterRoutes(r *router.Router, svc *Service, cfg RoutesConfig) {
 		policies.POST("/roles", handler.ForwardPolicies)
 		policies.POST("/roles/delete", handler.ForwardPolicies)
 	}
+
+	// 服务凭证（AccessKey）：程序化鉴权凭证管理，透传到 IAM
+	accesskeys := group.Group("/accesskeys")
+	{
+		accesskeys.GET("/", handler.ForwardAccessKeys)
+		accesskeys.POST("/", handler.ForwardAccessKeys)
+		accesskeys.DELETE("/{keyID}", handler.ForwardAccessKeys)
+	}
+
+	// 服务模块订阅：注册哪些模块即可拉取对应配置（只读），透传到 IAM
+	services := group.Group("/services")
+	{
+		services.GET("/{name}/modules", handler.ForwardServices)
+		services.PUT("/{name}/modules", handler.ForwardServices)
+		services.DELETE("/{name}/modules", handler.ForwardServices)
+	}
 	middleware.AttachRouterErrors(r)
 }

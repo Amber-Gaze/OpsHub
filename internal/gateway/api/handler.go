@@ -230,6 +230,16 @@ func (h *Handler) ForwardPolicies(c *middleware.Context) {
 	h.forwardIAM(c, string(c.Method()), string(c.Path()), c.PostBody())
 }
 
+// ForwardAccessKeys 将服务凭证（AccessKey）管理请求原样透传到 IAM。
+func (h *Handler) ForwardAccessKeys(c *middleware.Context) {
+	h.forwardIAM(c, string(c.Method()), string(c.Path()), c.PostBody())
+}
+
+// ForwardServices 将服务模块订阅管理请求原样透传到 IAM。
+func (h *Handler) ForwardServices(c *middleware.Context) {
+	h.forwardIAM(c, string(c.Method()), string(c.Path()), c.PostBody())
+}
+
 // forwardIAM 透传请求到 IAM 服务（保留 Content-Type/Authorization/RequestID 等）。
 func (h *Handler) forwardIAM(c *middleware.Context, method, path string, body []byte) {
 	status, respBody, contentType, err := h.svc.ForwardAuth(method, path, body, h.collectHeaders(c, false))

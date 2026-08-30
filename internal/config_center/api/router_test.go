@@ -1,9 +1,11 @@
 package api
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
+	"github.com/Amber-Gaze/OpsHub/internal/config_center/domain"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/authutil"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/casbinx"
 	"github.com/fasthttp/router"
@@ -295,4 +297,107 @@ func TestConfigPullRoute(t *testing.T) {
 	if strings.Contains(body, `"cdn/vod/bitrate"`) {
 		t.Fatalf("filtered pull should NOT include cdn item, body=%s", body)
 	}
+}
+
+// pullResp 解析 /configs/pull 响应。
+func pullResp(t *testing.T, c *fasthttp.RequestCtx) domain.PullResponse {
+	t.Helper()
+	var pr domain.PullResponse
+	if err := json.Unmarshal(c.Response.Body(), &pr); err != nil {
+		t.Fatalf("unmarshal pull response: %v, body=%s", err, c.Response.Body())
+	}
+	return pr
+}
+
+// TestConfigPullFilters 不同层级过滤：module / name / path / key。
+func TestConfigPullFilters(t *testing.T) {
+	r := testRouter(t) // pay/gateway/timeout_ms, pay/gateway/retry, cdn/vod/bitrate
+
+	// 全量：3 项 + revision=3
+	pr := pullResp(t, pullWith(r, "/configs/pull"))
+	if len(pr.Items) != 3 || pr.Revision != 3 {
+		t.Fatalf("full pull items=%d revision=%d, want 3/3", len(pr.Items), pr.Revision)
+	}
+
+	// module 过滤
+	pr = pullResp(t, pullWith(r, "/configs/pull?business=pay&module=gateway"))
+	if len(pr.Items) != 2 {
+		t.Fatalf("module pull items=%d, want 2", len(pr.Items))
+	}
+
+	// name 精确项
+	pr = pullResp(t, pullWith(r, "/configs/pull?business=pay&module=gateway&name=retry"))
+	if len(pr.Items) != 1 || pr.Items[0].Key != "pay/gateway/retry" {
+		t.Fatalf("name pull = %+v", pr.Items)
+	}
+
+	// path 前缀
+	pr = pullResp(t, pullWith(r, "/configs/pull?path=pay/gateway"))
+	if len(pr.Items) != 2 {
+		t.Fatalf("path pull items=%d, want 2", len(pr.Items))
+	}
+
+	// key 精确
+	pr = pullResp(t, pullWith(r, "/configs/pull?key=cdn/vod/bitrate"))
+	if len(pr.Items) != 1 || pr.Items[0].Key != "cdn/vod/bitrate" {
+		t.Fatalf("key pull = %+v", pr.Items)
+	}
+
+	// name 缺少 business/module → 400
+	c := dispatch("GET", "/configs/pull?name=retry", adminHeaders(), "")
+	r.Handler(c)
+	if c.Response.StatusCode() != fasthttp.StatusBadRequest {
+		t.Fatalf("name-without-business status = %d, want 400", c.Response.StatusCode())
+	}
+}
+
+// TestConfigPullIncremental 增量拉取：since 返回变更项与 removed，revision 单调递增。
+func TestConfigPullIncremental(t *testing.T) {
+	r := testRouter(t) // rev=3: pay/gateway/timeout_ms, pay/gateway/retry, cdn/vod/bitrate
+
+	// since=2 → 只有 rev3 的 create（cdn/vod/bitrate）
+	pr := pullResp(t, pullWith(r, "/configs/pull?since=2"))
+	if len(pr.Items) != 1 || pr.Items[0].Key != "cdn/vod/bitrate" {
+		t.Fatalf("since=2 items = %+v, want [cdn/vod/bitrate]", pr.Items)
+	}
+	if len(pr.Removed) != 0 || pr.Revision != 3 {
+		t.Fatalf("since=2 removed=%v revision=%d", pr.Removed, pr.Revision)
+	}
+
+	// 更新 + 删除
+	c := dispatch("PUT", "/configs/tree/pay/gateway/timeout_ms", adminHeaders(), `{"value":"200","operator":"tester"}`)
+	r.Handler(c)
+	if c.Response.StatusCode() != fasthttp.StatusOK {
+		t.Fatalf("PUT status=%d body=%s", c.Response.StatusCode(), c.Response.Body())
+	}
+	c = dispatch("DELETE", "/configs/tree/pay/gateway/retry", adminHeaders(), "")
+	r.Handler(c)
+	if c.Response.StatusCode() != fasthttp.StatusNoContent {
+		t.Fatalf("DELETE status=%d", c.Response.StatusCode())
+	}
+
+	// since=3 → 变更项=timeout_ms(updated rev4)，removed=retry(rev5)
+	pr = pullResp(t, pullWith(r, "/configs/pull?since=3"))
+	if pr.Revision != 5 {
+		t.Fatalf("revision after update+delete = %d, want 5", pr.Revision)
+	}
+	if len(pr.Items) != 1 || pr.Items[0].Key != "pay/gateway/timeout_ms" || pr.Items[0].Value != "200" {
+		t.Fatalf("incremental items = %+v, want [timeout_ms=200]", pr.Items)
+	}
+	if len(pr.Removed) != 1 || pr.Removed[0] != "pay/gateway/retry" {
+		t.Fatalf("incremental removed = %v, want [pay/gateway/retry]", pr.Removed)
+	}
+
+	// 增量 + 层级过滤组合：since=3 且 business=cdn → 空
+	pr = pullResp(t, pullWith(r, "/configs/pull?since=3&business=cdn"))
+	if len(pr.Items) != 0 || len(pr.Removed) != 0 {
+		t.Fatalf("cdn since=3 should be empty, items=%v removed=%v", pr.Items, pr.Removed)
+	}
+}
+
+// pullWith 发起一次带 admin 授权的 pull 请求。
+func pullWith(r *router.Router, path string) *fasthttp.RequestCtx {
+	c := dispatch("GET", path, adminHeaders(), "")
+	r.Handler(c)
+	return c
 }

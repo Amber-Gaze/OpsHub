@@ -42,5 +42,21 @@ func RegisterRoutes(r *router.Router, svc *Service) {
 		users.PUT("/{name}/change-passwd", handler.ChangePassword, middleware.RequireSelfOrAdmin())
 		users.PUT("/{name}", handler.UpdateUser, middleware.RequireSelfOrAdmin())
 	}
+
+	// 服务凭证（AccessKey）：程序化鉴权凭证，本人或管理员管理；下游服务用它自签 JWT
+	aks := group.Group("/accesskeys", middleware.JWTAuthMiddleware())
+	{
+		aks.POST("/", handler.CreateAccessKey)
+		aks.GET("/", handler.ListAccessKeys)
+		aks.DELETE("/{keyID}", handler.DeleteAccessKey)
+	}
+
+	// 服务模块订阅：注册哪些模块即可拉取对应配置（只读）；仅管理员可注册/取消
+	services := group.Group("/services", middleware.JWTAuthMiddleware())
+	{
+		services.GET("/{name}/modules", handler.GetServiceModules, middleware.RequireAdmin())
+		services.PUT("/{name}/modules", handler.SetServiceModules, middleware.RequireAdmin())
+		services.DELETE("/{name}/modules", handler.RemoveServiceModule, middleware.RequireAdmin())
+	}
 	middleware.AttachRouterErrors(r)
 }

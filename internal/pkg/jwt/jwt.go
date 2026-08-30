@@ -63,3 +63,42 @@ func ParseToken(tokenString string) (*CustomClaims, error) {
 	}
 	return nil, errors.New("invalid token")
 }
+
+// GenAccessToken 用指定密钥（AccessKeySecret）签发短期 JWT，header 携带 kid（AccessKeyID），
+// 用于服务凭证（AccessKey）自签认证。claims.Username 仅作展示，服务端以 kid 查到的 AccessKey 归属为准。
+func GenAccessToken(kid, username string, secret []byte, ttl time.Duration) (string, error) {
+	claims := CustomClaims{
+		Username: username,
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   username,
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(ttl)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			Issuer:    "opshub-accesskey",
+		},
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	token.Header["kid"] = kid
+	return token.SignedString(secret)
+}
+
+// ParseAccessToken 解析 AccessKey 自签 JWT（不验签），返回 claims 与 header 中的 kid。
+func ParseAccessToken(tokenString string) (*CustomClaims, string, error) {
+	var claims = new(CustomClaims)
+	token, _, err := jwt.NewParser().ParseUnverified(tokenString, claims)
+	if err != nil {
+		return nil, "", err
+	}
+	kid, _ := token.Header["kid"].(string)
+	return claims, kid, nil
+}
+
+// VerifyAccessToken 用指定密钥（AccessKeySecret）验签 AccessKey 自签 JWT。
+func VerifyAccessToken(tokenString string, secret []byte) error {
+	_, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.New("unexpected signing method")
+		}
+		return secret, nil
+	})
+	return err
+}

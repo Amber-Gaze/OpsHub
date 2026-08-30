@@ -8,8 +8,6 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/casbin/casbin/v2"
-
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/authutil"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/casbinx"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/jwt"
@@ -18,6 +16,7 @@ import (
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/repository/redis"
 	"github.com/Amber-Gaze/OpsHub/internal/pkg/store"
 	"github.com/Amber-Gaze/OpsHub/pkg/logger"
+	"github.com/casbin/casbin/v2"
 )
 
 var (
@@ -40,13 +39,21 @@ type Service struct {
 	jwtSecret      []byte
 	tokenTTL       time.Duration
 	issuer         string
-	enf            *casbin.SyncedEnforcer
+	engine         GrantEngine              // 配置授权决策引擎（可替换：casbin / 公司权限中心）
+	users          store.UserStore          // 用户存储（可替换：MySQL / LDAP / 公司用户源）
+	accessKeys     store.AccessKeyStore     // 服务凭证存储（AccessKey，程序化鉴权）
+	svcMods        store.ServiceModuleStore // 服务模块订阅存储（注册哪些模块可拉取）
 	cache          *redis.Cache
 }
 
-// NewService 创建 IAM 服务；enf 可为 nil（则仅 IsAdmin 能通过配置鉴权，非管理员一律拒绝配置操作）。
+// NewService 创建 IAM 服务（casbin 授权引擎）；enf 可为 nil（则仅 IsAdmin 能通过配置鉴权，非管理员一律拒绝配置操作）。
 func NewService(enf *casbin.SyncedEnforcer) *Service {
-	return newService(enf, authutil.DefaultDecisionSecret, defaultTokenTTL)
+	return newService(&casbinGrantEngine{enf: enf}, authutil.DefaultDecisionSecret, defaultTokenTTL)
+}
+
+// NewServiceWithEngine 用自定义授权引擎构建服务（对接公司权限中心时传入其 GrantEngine 实现）。
+func NewServiceWithEngine(engine GrantEngine) *Service {
+	return newService(engine, authutil.DefaultDecisionSecret, defaultTokenTTL)
 }
 
 // SetRedisCache 附加 Redis（可选），用于登出令牌黑名单等场景。
@@ -83,7 +90,7 @@ func (s *Service) isTokenBlacklisted(token string) bool {
 	return ok
 }
 
-func newService(enf *casbin.SyncedEnforcer, secret []byte, ttl time.Duration) *Service {
+func newService(engine GrantEngine, secret []byte, ttl time.Duration) *Service {
 	if ttl <= 0 {
 		ttl = defaultTokenTTL
 	}
@@ -95,8 +102,42 @@ func newService(enf *casbin.SyncedEnforcer, secret []byte, ttl time.Duration) *S
 		jwtSecret:      append([]byte(nil), secret...),
 		tokenTTL:       ttl,
 		issuer:         defaultJWTIssuer,
-		enf:            enf,
+		engine:         engine,
 	}
+}
+
+// SetUserStore 注入用户存储。默认使用全局 store.Client().Users()（MySQL）；
+// 对接 LDAP / 公司用户源时注入自定义 store.UserStore 实现即可替换。
+func (s *Service) SetUserStore(us store.UserStore) *Service {
+	s.users = us
+	return s
+}
+
+// userStore 返回注入的用户存储，未注入时回退到全局 MySQL 存储。
+func (s *Service) userStore() store.UserStore {
+	if s.users != nil {
+		return s.users
+	}
+	return store.Client().Users()
+}
+
+// UserStore 暴露给 Handler（用户管理接口）使用的用户存储。
+func (s *Service) UserStore() store.UserStore {
+	return s.userStore()
+}
+
+// SetAccessKeyStore 注入访问凭证存储（默认全局 MySQL）。
+func (s *Service) SetAccessKeyStore(aks store.AccessKeyStore) *Service {
+	s.accessKeys = aks
+	return s
+}
+
+// accessKeyStore 返回注入的凭证存储，未注入时回退到全局 MySQL。
+func (s *Service) accessKeyStore() store.AccessKeyStore {
+	if s.accessKeys != nil {
+		return s.accessKeys
+	}
+	return store.Client().AccessKeys()
 }
 
 type LoginResult struct {
@@ -121,7 +162,7 @@ func (s *Service) Signup(c *middleware.Context, req signupRequest) error {
 		return err
 	}
 
-	_, err := store.Client().Users().Get(c, subject)
+	_, err := s.userStore().Get(c, subject)
 	if err == nil {
 		return fmt.Errorf("user %s already exists", subject)
 	}
@@ -147,7 +188,7 @@ func (s *Service) Signup(c *middleware.Context, req signupRequest) error {
 		Status:   1,
 	}
 
-	if err := store.Client().Users().Create(c, newUser); err != nil {
+	if err := s.userStore().Create(c, newUser); err != nil {
 		return err
 	}
 	if firstUser {
@@ -159,7 +200,7 @@ func (s *Service) Signup(c *middleware.Context, req signupRequest) error {
 
 // isFirstUser 判断当前是否还没有任何用户（首个注册用户自动成为管理员）。
 func (s *Service) isFirstUser(ctx context.Context) (bool, error) {
-	list, err := store.Client().Users().List(ctx)
+	list, err := s.userStore().List(ctx)
 	if err != nil {
 		return false, err
 	}
@@ -198,7 +239,7 @@ func (s *Service) Login(c *middleware.Context, req loginRequest) (LoginResult, e
 		return LoginResult{}, ErrInvalidUser
 	}
 
-	userInfo, err := store.Client().Users().Get(c, subject)
+	userInfo, err := s.userStore().Get(c, subject)
 	if err != nil {
 		return LoginResult{}, ErrInvalidUser
 	}
@@ -220,7 +261,7 @@ func (s *Service) Login(c *middleware.Context, req loginRequest) (LoginResult, e
 	}
 
 	userInfo.LoginedAt = time.Now().Unix()
-	if err := store.Client().Users().Update(c, userInfo); err != nil {
+	if err := s.userStore().Update(c, userInfo); err != nil {
 		return LoginResult{}, err
 	}
 
@@ -240,7 +281,7 @@ func (s *Service) Refresh(c *middleware.Context, token string) (LoginResult, err
 		return LoginResult{}, ErrTokenExpired
 	}
 
-	userInfo, err := store.Client().Users().Get(c, subject)
+	userInfo, err := s.userStore().Get(c, subject)
 	if err != nil {
 		return LoginResult{}, ErrInvalidUser
 	}
@@ -264,7 +305,7 @@ func (s *Service) Scope(subject string) ([]casbinx.Grant, error) {
 	if subject == "" {
 		return nil, ErrInvalidUser
 	}
-	userInfo, err := store.Client().Users().Get(context.Background(), subject)
+	userInfo, err := s.userStore().Get(context.Background(), subject)
 	if err != nil {
 		return nil, ErrInvalidUser
 	}
@@ -280,27 +321,10 @@ func (s *Service) UserGrants(subject string) ([]casbinx.Grant, error) {
 }
 
 func (s *Service) collectGrants(subject string) ([]casbinx.Grant, error) {
-	if s.enf == nil {
+	if s.engine == nil {
 		return nil, nil
 	}
-	perms, err := s.enf.GetImplicitPermissionsForUser(subject)
-	if err != nil {
-		return nil, err
-	}
-	seen := map[string]struct{}{}
-	grants := make([]casbinx.Grant, 0, len(perms))
-	for _, p := range perms {
-		if len(p) < 3 || !strings.HasPrefix(p[1], "config/") {
-			continue
-		}
-		key := p[1] + "|" + p[2]
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		grants = append(grants, casbinx.Grant{Obj: p[1], Act: p[2]})
-	}
-	return grants, nil
+	return s.engine.ImplicitGrants(subject)
 }
 
 // Authorize 校验令牌并返回鉴权决策。对配置资源：
@@ -330,7 +354,7 @@ func (s *Service) Authorize(token, resource, action string) (*middleware.AuthDec
 		action = "UNKNOWN"
 	}
 
-	userInfo, err := store.Client().Users().Get(context.Background(), subject)
+	userInfo, err := s.userStore().Get(context.Background(), subject)
 	if err != nil {
 		return nil, ErrInvalidUser
 	}
@@ -344,8 +368,8 @@ func (s *Service) Authorize(token, resource, action string) (*middleware.AuthDec
 		obj, act = casbinx.NormalizeConfigResource(resource, action)
 		if isConfigWriteAction(act) {
 			// 写/删：精确校验目标资源
-			if s.enf != nil {
-				allow, err = s.enf.Enforce(subject, obj, act)
+			if s.engine != nil {
+				allow, err = s.engine.Enforce(subject, obj, act)
 				if err != nil {
 					return nil, err
 				}
@@ -404,15 +428,30 @@ func (s *Service) parseToken(token string) (string, time.Time, error) {
 	if strings.HasPrefix(strings.ToLower(trimmed), "bearer ") {
 		trimmed = strings.TrimSpace(trimmed[7:])
 	}
-	claims, err := jwt.ParseToken(trimmed)
-	if err != nil {
+
+	// 1) 标准账号密码 JWT（服务端静态密钥签发）
+	if claims, err := jwt.ParseToken(trimmed); err == nil && claims != nil && claims.Subject != "" && claims.ExpiresAt != nil {
+		return claims.Subject, claims.ExpiresAt.Time, nil
+	}
+
+	// 2) 服务凭证（AccessKey）自签 JWT：header kid=AccessKeyID，按 kid 查库拿 Secret 验签
+	claims, kid, err := jwt.ParseAccessToken(trimmed)
+	if err != nil || kid == "" {
 		return "", time.Time{}, ErrInvalidToken
 	}
-	if claims == nil {
+	ak, aerr := s.accessKeyStore().GetByKeyID(context.Background(), kid)
+	if aerr != nil || ak == nil {
 		return "", time.Time{}, ErrInvalidToken
 	}
-	if claims.Subject == "" || claims.ExpiresAt == nil {
+	if ak.Status != 1 || (ak.Expires > 0 && time.Now().UTC().Unix() > ak.Expires) {
 		return "", time.Time{}, ErrInvalidToken
 	}
-	return claims.Subject, claims.ExpiresAt.Time, nil
+	if err := jwt.VerifyAccessToken(trimmed, []byte(ak.AccessKeySecret)); err != nil {
+		return "", time.Time{}, ErrInvalidToken
+	}
+	if claims.ExpiresAt == nil || time.Now().UTC().After(claims.ExpiresAt.Time) {
+		return "", time.Time{}, ErrTokenExpired
+	}
+	// 身份以 AccessKey 归属的服务账号为准（不信任客户端 claims）
+	return ak.Username, claims.ExpiresAt.Time, nil
 }

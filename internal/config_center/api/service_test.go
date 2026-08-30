@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"testing"
 )
 
@@ -154,5 +155,88 @@ func TestServiceHistoryCompare(t *testing.T) {
 	last := hist[len(hist)-1]
 	if last.After != cfg.Value || last.Version != cfg.Version {
 		t.Fatalf("last history %+v != current %+v", last, cfg)
+	}
+}
+
+// TestServiceRevisionAndChangesSince 验证全局版本号单调递增，以及增量查询 ChangesSince。
+func TestServiceRevisionAndChangesSince(t *testing.T) {
+	svc := NewService()
+	if rev := svc.Revision(context.Background()); rev != 0 {
+		t.Fatalf("initial revision = %d, want 0", rev)
+	}
+	if _, err := svc.Create("pay/gateway/timeout_ms", "100", "a"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Create("pay/gateway/retry", "3", "a"); err != nil {
+		t.Fatal(err)
+	}
+	if rev := svc.Revision(context.Background()); rev != 2 {
+		t.Fatalf("revision after 2 creates = %d, want 2", rev)
+	}
+	if _, err := svc.Update("pay/gateway/timeout_ms", "200", "b"); err != nil {
+		t.Fatal(err)
+	}
+	rev2 := svc.Revision(context.Background())
+	if rev2 != 3 {
+		t.Fatalf("revision after update = %d, want 3", rev2)
+	}
+
+	// ChangesSince(0) 聚合出各 key 最后一次变更
+	changed := svc.ChangesSince(0)
+	if ch := changed["pay/gateway/timeout_ms"]; ch.Action != "update" || ch.After != "200" {
+		t.Fatalf("timeout_ms last change = %+v", ch)
+	}
+	if ch := changed["pay/gateway/retry"]; ch.Action != "create" {
+		t.Fatalf("retry last change = %+v", ch)
+	}
+	if len(svc.ChangesSince(rev2)) != 0 {
+		t.Fatalf("changes since latest should be empty, got %v", svc.ChangesSince(rev2))
+	}
+
+	// 删除：ChangesSince 能看到 delete，且 revision 继续递增
+	if err := svc.Delete("pay/gateway/retry"); err != nil {
+		t.Fatal(err)
+	}
+	rev3 := svc.Revision(context.Background())
+	if rev3 != 4 {
+		t.Fatalf("revision after delete = %d, want 4", rev3)
+	}
+	if ch := svc.ChangesSince(rev2)["pay/gateway/retry"]; ch.Action != "delete" {
+		t.Fatalf("retry last change = %+v", ch)
+	}
+	if _, exists := svc.Get("pay/gateway/retry"); exists {
+		t.Fatal("retry should be deleted")
+	}
+}
+
+// TestPullKeyMatcher 验证各过滤参数的匹配语义。
+func TestPullKeyMatcher(t *testing.T) {
+	cases := []struct {
+		name       string
+		business   string
+		module     string
+		nameParam  string
+		path       string
+		key        string
+		keyToMatch string
+		want       bool
+	}{
+		{"business only", "pay", "", "", "", "", "pay/gateway/timeout_ms", true},
+		{"business mismatch", "pay", "", "", "", "", "cdn/vod/bitrate", false},
+		{"module", "pay", "gateway", "", "", "", "pay/gateway/retry", true},
+		{"module mismatch", "pay", "order", "", "", "", "pay/gateway/retry", false},
+		{"item name", "pay", "gateway", "timeout_ms", "", "", "pay/gateway/timeout_ms", true},
+		{"item name mismatch", "pay", "gateway", "timeout_ms", "", "", "pay/gateway/retry", false},
+		{"path prefix", "", "", "", "pay/gateway", "", "pay/gateway/timeout_ms", true},
+		{"path exact", "", "", "", "cdn/vod/bitrate", "", "cdn/vod/bitrate", true},
+		{"path not under", "", "", "", "pay/gateway", "", "pay/order/limit", false},
+		{"key exact", "", "", "", "", "cdn/vod/bitrate", "cdn/vod/bitrate", true},
+		{"key mismatch", "", "", "", "", "cdn/vod/bitrate", "cdn/vod/other", false},
+	}
+	for _, c := range cases {
+		m := pullKeyMatcher(c.business, c.module, c.nameParam, c.path, c.key)
+		if got := m(c.keyToMatch); got != c.want {
+			t.Errorf("%s: match(%q) = %v, want %v", c.name, c.keyToMatch, got, c.want)
+		}
 	}
 }

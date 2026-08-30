@@ -142,7 +142,7 @@ Redis 的另一个用途：**IAM 登出令牌黑名单**（`opshub:iam:blacklist
 | 方法 | 路径 |
 |---|---|
 | GET | `/configs` `/configs/tree` `/configs/tree/{b}` `/configs/tree/{b}/{m}` `/configs/tree/{b}/{m}/{n}` |
-| GET | `/configs/pull[?business=&module=]`（下游服务拉取快照） |
+| GET | `/configs/pull`（下游服务拉取快照，支持层级过滤与增量，见下） |
 | GET | `/configs/history/{key}`（历史 + 当前值对比） |
 | POST | `/configs` |
 | PUT | `/configs/{key}` `/configs/tree/{b}/{m}/{n}` |
@@ -169,18 +169,42 @@ Redis 的另一个用途：**IAM 登出令牌黑名单**（`opshub:iam:blacklist
 
 ## 6.6 下游服务拉取配置（demo）
 
-专门的业务服务通过 `pkg/configclient` 拉取配置：
+专门的业务服务通过 `pkg/configclient` 拉取配置，支持**任意层级**与**增量判断更新**：
 
 ```
 cli := configclient.New("http://127.0.0.1:8004", "http://127.0.0.1:8007")
 cli.Login(ctx, user, pass)
-items, _ := cli.Pull(ctx)          // GET /configs/pull（自动 authorize 携带 scope）
-kv := configclient.Snapshot(items) // key -> value
+
+items, _ := cli.Pull(ctx)                // 全量快照（自动 authorize 携带 scope）
+items, _ = cli.PullByBusiness(ctx, "pay") // 只拉 pay 业务
+items, _ = cli.PullPath(ctx, "pay/gateway") // 只拉 pay/gateway 前缀
+items, _ = cli.PullKey(ctx, "pay/gateway/timeout_ms") // 精确一项
+
+// 增量：记录上次 revision，之后只拉变更项 + 被删 key
+res, _ := cli.PullSince(ctx, rev)
+if res.HasChanged(rev) { /* 有变化：应用 res.Items、删除 res.Removed，更新 rev=res.Revision */ }
 ```
 
+### /configs/pull 参数（可组合）
+
+| 参数 | 说明 |
+|---|---|
+| `business` / `module` / `name` | 业务/模块/具体项三级（name 需带 business+module） |
+| `path=pay/gateway` | key 为 `pay/gateway` 或以 `pay/gateway/` 开头（层级前缀） |
+| `key=pay/gateway/timeout_ms` | 精确一个 key |
+| `since=<rev>` | 增量：只返回全局版本号 > rev 的变更项 + `removed`（被删 key），响应带最新 `revision` |
+
+响应：`{revision, items, removed, generated_at}`。
+
+- **全局版本号**：每次写操作单调 +1（etcd 用事务 CAS 原子递增，存保留 key `@revision`；内存模式用原子计数）。
+- **增量语义**：基于审计变更日志（`ConfigChange.Revision`）推导，删除感知可靠；未配置审计（纯内存且进程重启）时增量不完整，建议生产用 etcd audit。
+- 所有结果按当前用户 scope 过滤可读项。
 - 客户端封装了「登录 IAM → authorize 取 scope → 携带 X-Auth-* 头调用 `/configs/pull`」完整链路。
-- 运行示例：`go run ./examples/config-consumer -user admin -pass '你的密码' -interval 5s`
-  （周期拉取并输出 新增/更新/删除 变化）。
+- **服务凭证（AccessKey）**：下游服务用 `AccessKeyID + AccessKeySecret` 自签 JWT（header `kid`）认证，替代账号密码；iam 按 `kid` 查库验签（`parseToken` 的 kid 分支），身份以凭证归属的服务账号为准。
+- **模块订阅（只读）**：管理员经 `/services/{name}/modules` 注册服务可拉取的业务/模块（注册即授 read、默认不授写/删），未订阅模块拉不到；`configclient.PullSubscribed` 按订阅拉取。
+- **本地落盘**：`configclient.WriteTo(items, dir)` 按业务/模块写 `<dir>/<business>/<module>.json`（key→value JSON，value 为配置 JSON 字符串）；默认数据目录与 `bin/` 平级（`bin/../data`）。
+- 运行示例：`go run ./examples/config-consumer -access-key-id <AK> -access-key-secret <SECRET> -modules pay/gateway,common/ratelimit -interval 5s`
+  （服务凭证登录 → 首次全量、之后增量 → 只拉订阅模块 → 落盘 `bin/../data`；`-path pay/gateway` 只关注某层级）。
 
 ### 用户 / 策略管理（透传 IAM，IAM 自行 JWT+管理员校验）
 | 方法 | 路径 |
@@ -213,8 +237,26 @@ kv := configclient.Snapshot(items) // key -> value
 8. **下游拉取**：`/configs/pull` + `pkg/configclient` + `examples/config-consumer` demo。
 9. **运控台前端**：`web/` 静态 SPA，由网关统一入口服务。
 
-## 8. 后续扩展建议
+## 8. 可替换适配点（对接公司权限中心 / 配置存储）
 
+为便于与公司既有模块合并或替换，鉴权决策与配置存储都收敛成了**窄接口 + 默认实现**，
+下游（gateway / config-center / config-consumer / 前端）只依赖对外协议（scope 签名、REST），不依赖具体实现。
+
+| 适配点 | 接口 | 默认实现 | 替换方式 |
+|---|---|---|---|
+| 配置授权决策 | `iam/api.GrantEngine` | `casbinGrantEngine`（casbin + MySQL） | 实现接口转发公司权限中心（OPA/OpenFGA/自研），把结果翻译成 `[]casbinx.Grant` 注入 `NewServiceWithEngine` |
+| 用户/身份源 | `store.UserStore` | MySQL（`store.Client().Users()` 全局回退） | 注入 LDAP/公司用户源实现：`svc.SetUserStore(...)` |
+| 配置主存储 | `config_center/api.ConfigStore` | `etcdConfigStore` / `memoryConfigStore` | `NewServiceWithEtcd` / `SetConfigStore(...)` 换 Nacos/MySQL 等 |
+| 配置审计存储 | `config_center/api.AuditStore` | `etcdAuditStore`（sibling prefix） | `SetAuditKV` / `SetAuditStore(...)` 换公司变更记录系统 |
+
+关键点：
+- **对外协议是稳定契约**：`/authorize` 返回 `decision+signature`，scope 载体 `scope|<subject>|<grantsJSON>|<unix>` 用 HMAC 签名。IAM 内部换引擎后对外不变，下游零改动。
+- 装配入口：`cmd/opshub-iam/main.go`（`NewService`/`NewServiceWithEngine` + `SetUserStore`）、`cmd/opshub-config/main.go`（`NewServiceWithEtcd`/`SetAuditKV`/`SetConfigStore`）。
+- 决策签名密钥当前为默认值 `authutil.DefaultDecisionSecret`，生产必须改为可配置且 iam / config-center 一致（见 9 后续扩展建议）。
+
+## 9. 后续扩展建议
+
+- **决策密钥配置化（P0）**：`decisionSecret`/JWT secret 当前为默认值写死，需改为从配置读取（k8s Secret 挂载），iam 与 config-center 共用同一把；支持轮换。
 - **实时推送**：配置中心基于 etcd Watch 提供 SSE/WebSocket 订阅，配置变更实时下发到控制台与下游。
 - **令牌版本（tv）**：JWT Claims 已含 `tv` 但未使用，可结合 Redis 做"改密即作废全部旧令牌"。
 - **网关分布式限流**：当前限流为单机内存 `uber/ratelimit`，可换 Redis 计数实现集群限流。
