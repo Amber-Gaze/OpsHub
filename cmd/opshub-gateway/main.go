@@ -32,7 +32,7 @@ var (
 )
 
 const (
-	fallbackMonitorBasePort = 8100
+	fallbackMonitorBasePort = 8001
 	gatewayMonitorOffset    = 2
 	defaultRateLimitRPS     = 100
 )

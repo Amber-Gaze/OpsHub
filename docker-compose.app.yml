@@ -17,7 +17,7 @@ services:
     container_name: opshub-iam
     restart: unless-stopped
     ports:
-      - "8004:8004"
+      - "8101:8101"
     depends_on:
       mysql:
         condition: service_healthy
@@ -35,7 +35,7 @@ services:
     container_name: opshub-config
     restart: unless-stopped
     ports:
-      - "8007:8007"
+      - "8201:8201"
     depends_on:
       mysql:
         condition: service_healthy

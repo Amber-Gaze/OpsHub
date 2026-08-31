@@ -22,15 +22,15 @@ var builtinDefaults = &Config{
 		LogFileName:    "ops_hub_gateway.log",
 	},
 	Auth: &AuthConf{
-		HTTPPort:       8004,
-		GRPCPort:       8005,
-		MonitoringPort: 8006,
+		HTTPPort:       8101,
+		GRPCPort:       8102,
+		MonitoringPort: 8103,
 		LogFileName:    "ops_hub_auth.log",
 	},
 	ConfigCenter: &ConfigCenterConf{
-		HTTPPort:       8007,
-		GRPCPort:       8008,
-		MonitoringPort: 8009,
+		HTTPPort:       8201,
+		GRPCPort:       8202,
+		MonitoringPort: 8203,
 		LogFileName:    "ops_hub_config.log",
 	},
 	MySQL: &MySQLConf{

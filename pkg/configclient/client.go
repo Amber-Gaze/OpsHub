@@ -2,7 +2,7 @@
 //
 // 典型用法（示例见 examples/config-consumer）：
 //
-//	cli := configclient.New("http://127.0.0.1:8004", "http://127.0.0.1:8007")
+//	cli := configclient.New("http://127.0.0.1:8101", "http://127.0.0.1:8201")
 //	if err := cli.Login(ctx, "svc-user", "pass"); err != nil { ... }
 //	items, err := cli.Pull(ctx) // 拉取全部可读配置快照
 //	kv := configclient.Snapshot(items) // key -> value
@@ -69,8 +69,8 @@ type authorizeResponse struct {
 
 // Client 配置拉取客户端。
 type Client struct {
-	authURL   string // IAM 服务根地址，如 http://127.0.0.1:8004
-	configURL string // 配置中心根地址，如 http://127.0.0.1:8007
+	authURL   string // IAM 服务根地址，如 http://127.0.0.1:8101
+	configURL string // 配置中心根地址，如 http://127.0.0.1:8201
 	http      *fasthttp.Client
 	token     string
 	decision  *authorizeResponse

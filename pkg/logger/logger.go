@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"errors"
 	"os"
 	"time"
 
@@ -10,7 +11,9 @@ import (
 )
 
 var (
-	logger *zap.SugaredLogger
+	logger     *zap.SugaredLogger
+	initCfg    *options.LoggerConf
+	subLoggers []*zap.SugaredLogger
 )
 
 func checkConfigDefaults(cfg *options.LoggerConf) {
@@ -118,6 +121,9 @@ func InitLogger(cfg *options.LoggerConf) error {
 		return err
 	}
 
+	// 保存配置副本，供 SubLogger 派生独立文件日志（如 GC 统计）
+	initCfg = &*cfg
+
 	core := zapcore.NewCore(
 		getLogEncoder(cfg),
 		getLogWriter(cfg),
@@ -133,9 +139,48 @@ func InitLogger(cfg *options.LoggerConf) error {
 	return nil
 }
 
+// CurrentLogFileName 返回当前主日志文件名（用于派生子日志文件名）。
+func CurrentLogFileName() string {
+	if initCfg == nil {
+		return ""
+	}
+	return initCfg.LogFileName
+}
+
+// SubLogger 基于当前全局配置，创建一个写入独立文件 <LogDir>/<filename> 的子 logger
+// （同样带 TimeRotator 轮转，编码/级别与主日志一致）。用于把高频/独立的日志
+// （如 GC 统计）与主日志分开，避免互相污染。
+func SubLogger(filename string) (*zap.SugaredLogger, error) {
+	if initCfg == nil {
+		return nil, errors.New("logger not initialized")
+	}
+	sub := &options.LoggerConf{
+		LogDir:      initCfg.LogDir,
+		LogFileName: filename,
+		Rotation:    initCfg.Rotation,
+		MaxBackups:  initCfg.MaxBackups,
+		MaxAge:      initCfg.MaxAge,
+		LogLevel:    initCfg.LogLevel,
+		Encoding:    initCfg.Encoding,
+		Compress:    initCfg.Compress,
+	}
+	checkConfigDefaults(sub)
+	if err := os.MkdirAll(sub.LogDir, 0755); err != nil {
+		return nil, err
+	}
+	core := zapcore.NewCore(getLogEncoder(sub), getLogWriter(sub), getLogLevel(sub))
+	zl := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))
+	sugar := zl.Sugar()
+	subLoggers = append(subLoggers, sugar)
+	return sugar, nil
+}
+
 func Sync() {
 	if logger != nil {
-		logger.Sync()
+		_ = logger.Sync()
+	}
+	for _, s := range subLoggers {
+		_ = s.Sync()
 	}
 }
 

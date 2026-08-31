@@ -7,6 +7,7 @@ import (
 	"net/http/pprof"
 	"runtime"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/Amber-Gaze/OpsHub/pkg/logger"
@@ -47,17 +48,37 @@ func StartPProf(service, addr string) {
 	}()
 }
 
-// StartGCLogger periodically emits GC related statistics to the shared logger.
+// StartGCLogger 周期输出 GC 统计，写入独立日志文件（由主日志名派生，如
+// ops_hub_config.log → ops_hub_config_gc.log），避免与主业务日志混在一起。
+// 若独立文件创建失败则回退到主 logger。
 func StartGCLogger(service string, interval time.Duration) {
 	if interval <= 0 {
 		interval = defaultGCInterval
+	}
+
+	gcFileName := "gc.log"
+	if base := logger.CurrentLogFileName(); base != "" {
+		gcFileName = strings.TrimSuffix(base, ".log") + "_gc.log"
+	}
+	gcLog, err := logger.SubLogger(gcFileName)
+	if err != nil {
+		gcLog = nil
 	}
 
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 
-		logger.Infof("[%s] GC logger started, interval=%s", service, interval)
+		// 独立文件优先，失败时回退主 logger
+		logf := func(format string, args ...interface{}) {
+			if gcLog != nil {
+				gcLog.Infof(format, args...)
+			} else {
+				logger.Infof(format, args...)
+			}
+		}
+
+		logf("[%s] GC logger started, file=%s interval=%s", service, gcFileName, interval)
 
 		for range ticker.C {
 			var stats debug.GCStats
@@ -76,7 +97,7 @@ func StartGCLogger(service string, interval time.Duration) {
 				lastGC = stats.LastGC.Format(time.RFC3339)
 			}
 
-			logger.Infof("[%s] gc_stats num_gc=%d pause_total=%s last_pause=%s last_gc=%s heap_alloc=%d heap_idle=%d heap_inuse=%d next_gc=%d", service, stats.NumGC, stats.PauseTotal, lastPause, lastGC, mem.HeapAlloc, mem.HeapIdle, mem.HeapInuse, mem.NextGC)
+			logf("[%s] gc_stats num_gc=%d pause_total=%s last_pause=%s last_gc=%s heap_alloc=%d heap_idle=%d heap_inuse=%d next_gc=%d", service, stats.NumGC, stats.PauseTotal, lastPause, lastGC, mem.HeapAlloc, mem.HeapIdle, mem.HeapInuse, mem.NextGC)
 		}
 	}()
 }

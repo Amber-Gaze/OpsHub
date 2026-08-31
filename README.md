@@ -33,7 +33,7 @@ The three components collectively accomplish a function that enables real-time u
 
 ## 快速开始
 
-依赖：Go 1.25+、Docker（Compose v2）。两种部署模式任选其一，**不要同时运行**（端口 8001/8004/8007 会冲突）。
+依赖：Go 1.25+、Docker（Compose v2）。两种部署模式任选其一，**不要同时运行**（端口 8001/8101/8201 会冲突）。
 
 ### 模式 A：本地开发（依赖跑容器，服务跑宿主机）
 

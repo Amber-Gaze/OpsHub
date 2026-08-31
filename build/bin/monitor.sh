@@ -23,8 +23,8 @@ log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 # 服务 -> 对外 HTTP 端口（用于健康检查）
 declare -A PORTS=(
     [opshub-gateway]=8001
-    [opshub-iam]=8004
-    [opshub-config]=8007
+    [opshub-iam]=8101
+    [opshub-config]=8201
 )
 CHECK_INTERVAL="${CHECK_INTERVAL:-30}" # 秒
 

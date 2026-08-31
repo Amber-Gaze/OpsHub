@@ -30,8 +30,8 @@ var (
 )
 
 const (
-	fallbackMonitorBasePort   = 8100
-	configCenterMonitorOffset = 3
+	fallbackMonitorBasePort   = 8201
+	configCenterMonitorOffset = 2
 )
 
 func main() {

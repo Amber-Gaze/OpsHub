@@ -10,8 +10,8 @@ OpsHub 由三个可独立部署的 Go 服务组成，前端（控制台）统一
 ```mermaid
 flowchart LR
     U[控制台 / 前端] -->|JWT + 请求| G[Gateway :8001]
-    G -->|登录/登出/刷新| I[IAM :8004]
-    G -->|scope 鉴权后透传| C[Config Center :8007]
+    G -->|登录/登出/刷新| I[IAM :8101]
+    G -->|scope 鉴权后透传| C[Config Center :8201]
     C --> E[(etcd 主存储)]
     C --> R[(Redis L1 缓存)]
     I --> M[(MySQL: 用户 / casbin 策略)]
@@ -21,8 +21,8 @@ flowchart LR
 | 模块 | 职责 | 端口 |
 |---|---|---|
 | **Gateway** | 统一入口：JWT 校验、限流、向 IAM 取 scope、向配置中心透传、向 IAM 透传用户/策略管理 | 8001 |
-| **IAM** | 身份验证（登录/登出/刷新）、鉴权（casbin RBAC）、配置授权（scope）管理 | 8004 |
-| **Config Center** | 配置的增删改查、业务/模块/列表三层浏览、按 scope 过滤与写权限校验、etcd 持久化 + Redis 混存 | 8007 |
+| **IAM** | 身份验证（登录/登出/刷新）、鉴权（casbin RBAC）、配置授权（scope）管理 | 8101 |
+| **Config Center** | 配置的增删改查、业务/模块/列表三层浏览、按 scope 过滤与写权限校验、etcd 持久化 + Redis 混存 | 8201 |
 
 ## 2. 配置分层模型（业务 → 模块 → 具体列表）
 
@@ -172,7 +172,7 @@ Redis 的另一个用途：**IAM 登出令牌黑名单**（`opshub:iam:blacklist
 专门的业务服务通过 `pkg/configclient` 拉取配置，支持**任意层级**与**增量判断更新**：
 
 ```
-cli := configclient.New("http://127.0.0.1:8004", "http://127.0.0.1:8007")
+cli := configclient.New("http://127.0.0.1:8101", "http://127.0.0.1:8201")
 cli.Login(ctx, user, pass)
 
 items, _ := cli.Pull(ctx)                // 全量快照（自动 authorize 携带 scope）

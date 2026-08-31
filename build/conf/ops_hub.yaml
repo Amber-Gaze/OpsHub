@@ -8,13 +8,13 @@ gateway:
   monitoring_port: 8003 # pprof 诊断端口
   log_file_name: "ops_hub_gateway.log"
   # 可选：不填则按 auth / config_center 的 http_port 自动拼 127.0.0.1
-  # auth_base_url: "http://127.0.0.1:8004"
-  # config_center_base_url: "http://127.0.0.1:8007"
+  # auth_base_url: "http://127.0.0.1:8101"
+  # config_center_base_url: "http://127.0.0.1:8201"
 
 auth:
-  http_port: 8004
-  grpc_port: 8005   # 预留，暂未启用 gRPC
-  monitoring_port: 8006 # pprof 诊断端口
+  http_port: 8101
+  grpc_port: 8102   # 预留，暂未启用 gRPC
+  monitoring_port: 8103 # pprof 诊断端口
   log_file_name: "ops_hub_auth.log"
   # 引导管理员（可选）：首次启动若库中无该用户则创建为管理员；密码为密文，勿写明文。
   # 生成密文: go run ./cmd/opshub-bootstrap-encrypt -key '你的主密钥' -password '管理员密码'
@@ -25,9 +25,9 @@ auth:
   # bootstrap_cipher_key: ""   # 不推荐入库，优先用环境变量
 
 config_center:
-  http_port: 8007
-  grpc_port: 8008   # 预留，暂未启用 gRPC
-  monitoring_port: 8009 # pprof 诊断端口
+  http_port: 8201
+  grpc_port: 8202   # 预留，暂未启用 gRPC
+  monitoring_port: 8203 # pprof 诊断端口
   log_file_name: "ops_hub_config.log"
 
 logger:

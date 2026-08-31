@@ -43,14 +43,14 @@ B=http://127.0.0.1
 g=--; i=--; c=--
 for _ in $(seq 1 30); do
     curl -sf -o /dev/null "$B:8001/healthz" && g=ok || g=fail
-    curl -sf -o /dev/null "$B:8004/readyz"  && i=ok || i=fail
-    curl -sf -o /dev/null "$B:8007/readyz"  && c=ok || c=fail
+    curl -sf -o /dev/null "$B:8101/readyz"  && i=ok || i=fail
+    curl -sf -o /dev/null "$B:8201/readyz"  && c=ok || c=fail
     [ "$g" = ok ] && [ "$i" = ok ] && [ "$c" = ok ] && break
     sleep 1
 done
 
 echo
-echo "gateway :8001 $g | iam :8004 $i | config-center :8007 $c"
+echo "gateway :8001 $g | iam :8101 $i | config-center :8201 $c"
 echo
 echo "访问控制台: http://127.0.0.1:8001/"
 echo "  首个注册用户自动成为管理员；日志见 output/logs/；停止用 make dev-down"

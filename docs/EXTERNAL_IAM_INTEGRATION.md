@@ -13,8 +13,8 @@ OpsHub 由三个可独立部署的 Go 服务组成，**对外统一入口是网�
 | 模块 | 职责 | HTTP 端口 | 对外可见 |
 |---|---|---|---|
 | `gateway` | 统一入口：JWT 校验、限流、向 IAM 取 scope、转发配置/用户/策略、静态前端 | 8001 | ✅ |
-| `iam` | 身份验证（登录/注册/登出/刷新）+ 授权决策（默认 casbin RBAC）+ scope 签发 | 8004 | ❌（仅网关内部） |
-| `config-center` | 配置 CRUD / 分层浏览 / 历史审计 / 下游 pull，etcd 主存 + Redis L1 | 8007 | ❌（仅网关内部） |
+| `iam` | 身份验证（登录/注册/登出/刷新）+ 授权决策（默认 casbin RBAC）+ scope 签发 | 8101 | ❌（仅网关内部） |
+| `config-center` | 配置 CRUD / 分层浏览 / 历史审计 / 下游 pull，etcd 主存 + Redis L1 | 8201 | ❌（仅网关内部） |
 
 依赖：MySQL（用户 + casbin 策略）、etcd（配置主存 + 审计）、Redis（配置缓存 + 登出黑名单，可选）。
 
@@ -179,8 +179,8 @@ import (
 )
 
 ctx := context.Background()
-// auth 指向 IAM(8004)，config 指向配置中心(8007)；也可把 config 指向网关(8001)走统一入口
-cli := configclient.New("http://127.0.0.1:8004", "http://127.0.0.1:8007")
+// auth 指向 IAM(8101)，config 指向配置中心(8201)；也可把 config 指向网关(8001)走统一入口
+cli := configclient.New("http://127.0.0.1:8101", "http://127.0.0.1:8201")
 if err := cli.Login(ctx, "svc-pay", "Svc@2026Pay"); err != nil { /* 登录失败 */ }
 
 items, err := cli.Pull(ctx) // 拉取全部可读配置快照（首次自动 authorize 并携带 X-Auth-* 头）
@@ -206,7 +206,7 @@ if res.HasChanged(rev) {
 ```bash
 cd examples/config-consumer
 go run main.go \
-  -auth http://127.0.0.1:8004 -config http://127.0.0.1:8007 \
+  -auth http://127.0.0.1:8101 -config http://127.0.0.1:8201 \
   -user svc-pay -pass 'Svc@2026Pay' -interval 5s
 ```
 
@@ -320,7 +320,7 @@ svc.SetUserStore(&ldapUserStore{...})   // 覆盖默认 MySQL
 
 ## 8. 接入 Checklist
 
-- [ ] 端口与网络：对外只暴露 8001；8004/8007 仅内网可达
+- [ ] 端口与网络：对外只暴露 8001；8101/8201 仅内网可达
 - [ ] 依赖就绪：MySQL / etcd / Redis（compose 一键起，见 README「快速开始」）
 - [ ] `decisionSecret` 统一配置到 iam 与 config-center（生产必做）
 - [ ] 初始化：`/signup` 注册首个管理员，或配置 bootstrap admin

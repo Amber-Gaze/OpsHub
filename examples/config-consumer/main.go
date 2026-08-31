@@ -7,7 +7,7 @@
 // 用法（先启动 IAM + 配置中心，并配置好 bootstrap 管理员或普通用户）：
 //
 //	go run ./examples/config-consumer -user admin -pass '你的密码' \
-//	    -auth http://127.0.0.1:8004 -config http://127.0.0.1:8007 -interval 5s
+//	    -auth http://127.0.0.1:8101 -config http://127.0.0.1:8201 -interval 5s
 //	go run ./examples/config-consumer ... -path pay/gateway   # 只关注某层级
 package main
 
@@ -27,8 +27,8 @@ import (
 )
 
 func main() {
-	authURL := flag.String("auth", "http://127.0.0.1:8004", "IAM 服务根地址")
-	configURL := flag.String("config", "http://127.0.0.1:8007", "配置中心根地址（或网关 http://127.0.0.1:8001）")
+	authURL := flag.String("auth", "http://127.0.0.1:8101", "IAM 服务根地址")
+	configURL := flag.String("config", "http://127.0.0.1:8201", "配置中心根地址（或网关 http://127.0.0.1:8001）")
 	user := flag.String("user", "", "登录用户名（与 -pass 一起用；或改用下方服务凭证）")
 	pass := flag.String("pass", "", "登录密码")
 	accessKeyID := flag.String("access-key-id", "", "服务凭证 AccessKeyID（替代账号密码）")
